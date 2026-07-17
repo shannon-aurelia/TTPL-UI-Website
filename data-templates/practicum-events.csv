@@ -1,0 +1,5 @@
+source_key,npm,full_name,email,week_number,track,module_number,scheduled_date,scheduled_start,attendance_status,attended_date,attended_time,is_makeup,makeup_for_source_key,submission_override,deadline_override,notes
+2026-RL-W03-2306123456-M7,2306123456,Example Student,example@ui.ac.id,3,rl,7,2026-09-15,13:00,on_time,2026-09-15,12:56,false,,,,Regular attendance
+2026-RL-W03-2306987654-M2,2306987654,Second Student,second@ui.ac.id,3,rl,2,2026-09-15,13:00,absent,,,false,,,,Submission remains closed
+2026-RL-W05-2306987654-M2-MAKEUP,2306987654,Second Student,second@ui.ac.id,5,rl,2,2026-09-29,09:00,on_time,2026-09-29,08:58,true,2026-RL-W03-2306987654-M2,,,Makeup for Week 3
+2026-IDP-W09-2306123456-M8,2306123456,Example Student,example@ui.ac.id,9,idp,8,2026-11-10,08:00,late,2026-11-10,08:11,false,,,,Late attendance

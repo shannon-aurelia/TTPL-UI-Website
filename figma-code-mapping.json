@@ -1,0 +1,31 @@
+{
+  "fileKey": "RNdwzB4uDkNNxflxwdOGDv",
+  "namespace": "ttpl.codeconnect",
+  "mappings": [
+    {
+      "componentName": "Shell/Nav",
+      "sourcePath": "components/Shell.jsx"
+    },
+    {
+      "componentName": "Hero/Main",
+      "sourcePath": "app/page.jsx"
+    },
+    {
+      "componentName": "TrackCard",
+      "sourcePath": "app/page.jsx"
+    },
+    {
+      "componentName": "Card/Default",
+      "sourcePath": "app/page.jsx"
+    },
+    {
+      "componentName": "Button/Primary",
+      "sourcePath": "components/Button.jsx (suggested)"
+    },
+    {
+      "componentName": "Button/Ghost",
+      "sourcePath": "components/Button.jsx (suggested)"
+    }
+  ],
+  "notes": "This file lists Figma component names and their corresponding source files. Use the included script to generate MCP payloads for add_code_connect_map when MCP access is available."
+}
