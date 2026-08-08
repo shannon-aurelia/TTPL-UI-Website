@@ -46,6 +46,10 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
       setMessage('Only PDF files are accepted.');
       return;
     }
+    if (file.size > 20 * 1024 * 1024) {
+      setMessage('The PDF must be smaller than 20 MB.');
+      return;
+    }
     setUploading(session.id);
     setMessage('');
     const now = new Date().toISOString();

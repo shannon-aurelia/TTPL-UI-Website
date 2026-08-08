@@ -18,7 +18,7 @@ export default function Login() {
 
   useEffect(() => {
     if (!user) return;
-    router.replace(profile?.role === 'assistant' || profile?.role === 'admin' ? '/assistant-dashboard' : '/portal');
+    router.replace(profile?.role === 'admin' ? '/admin' : profile?.role === 'assistant' ? '/assistant-dashboard' : '/portal');
   }, [user, profile, router]);
 
   const submit = async (event) => {
@@ -26,7 +26,11 @@ export default function Login() {
     setError('');
     setNotice('');
     if (!supabase) {
-      setError('Supabase has not been configured. Follow DATA_SETUP_GUIDE.md first.');
+      setError('The account service is not available right now. Please contact a TTPL administrator.');
+      return;
+    }
+    if (!email.toLowerCase().endsWith('@ui.ac.id')) {
+      setError('Use your official UI email address.');
       return;
     }
     setSubmitting(true);
@@ -58,10 +62,10 @@ export default function Login() {
 
   return <section className="section auth-section">
     <div className="card auth-card">
-      <div className="eyebrow">TTPL account</div>
-      <h1 className="title">{registering ? 'Create your account.' : 'Sign in.'}</h1>
-      <p className="subtitle">Students receive a personalized weekly schedule, deadline tracking, report uploads, and progress view. Assistant accounts open the review dashboard.</p>
-      {!configured && <div className="status-message warning">The interface is ready, but Supabase variables are not set yet.</div>}
+      <div className="eyebrow">TTPL portal</div>
+      <h1 className="title">{registering ? 'Create a student account.' : 'Welcome back.'}</h1>
+      <p className="subtitle">Students can view their assigned schedule and submit reports. Assistants and administrators use the same sign-in form.</p>
+      {!configured && <div className="status-message warning">The account service is currently unavailable.</div>}
       {error && <div className="status-message error">{error}</div>}
       {notice && <div className="status-message">{notice}</div>}
       <form className="auth-form" onSubmit={submit}>
@@ -69,7 +73,7 @@ export default function Login() {
           <label>Full name<input value={fullName} onChange={(event) => setFullName(event.target.value)} required /></label>
           <label>NPM<input value={npm} onChange={(event) => setNpm(event.target.value)} required inputMode="numeric" /></label>
         </>}
-        <label>UI email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+        <label>UI email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" placeholder="name@ui.ac.id" /></label>
         <label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} /></label>
         <button className="btn" type="submit" disabled={submitting}>{submitting ? 'Please wait...' : registering ? 'Create student account' : 'Sign in'}</button>
       </form>

@@ -2014,6 +2014,88 @@ html[data-theme="light"] .image-frame-overlay {
   width: auto;
 }
 
+.admin-tabs {
+  display: flex;
+  gap: 10px;
+  margin: 0 0 18px;
+  overflow-x: auto;
+}
+
+.admin-tabs button {
+  border: 1px solid rgba(214,246,255,.15);
+  border-radius: 999px;
+  padding: 11px 18px;
+  background: rgba(255,255,255,.05);
+  color: var(--muted);
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.admin-tabs button.active {
+  background: var(--mint);
+  border-color: var(--mint);
+  color: #061525;
+}
+
+.admin-account-table {
+  min-width: 760px;
+}
+
+.admin-account-table select,
+.admin-assignment-form input,
+.admin-assignment-form select,
+.dashboard-table select,
+.review-controls textarea {
+  width: 100%;
+  border: 1px solid rgba(214,246,255,.15);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(4,17,31,.78);
+  color: var(--text);
+  font: inherit;
+}
+
+.admin-assignment-form {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 18px;
+  align-items: end;
+  margin-bottom: 22px;
+}
+
+.admin-assignment-form>div:first-child {
+  grid-column: 1 / -1;
+}
+
+.admin-assignment-form h2 {
+  margin: 10px 0 0;
+}
+
+.admin-assignment-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-assignment-form .admin-checkbox {
+  flex-direction: row;
+  align-items: center;
+  padding-bottom: 12px;
+}
+
+.admin-checkbox input {
+  width: auto;
+}
+
+.review-controls textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
 html[data-theme="light"] .auth-form input,html[data-theme="light"] .dashboard-tools input,html[data-theme="light"] .dashboard-tools select,html[data-theme="light"] .review-controls input,html[data-theme="light"] .review-controls select {
   background: rgba(255,255,255,.62);
   color: #061525;
@@ -2027,6 +2109,17 @@ html[data-theme="light"] .schedule-item,html[data-theme="light"] .progress-item,
 
 html[data-theme="light"] .status-message {
   color: #061525;
+}
+
+html[data-theme="light"] .admin-tabs button,
+html[data-theme="light"] .admin-account-table select,
+html[data-theme="light"] .admin-assignment-form input,
+html[data-theme="light"] .admin-assignment-form select,
+html[data-theme="light"] .dashboard-table select,
+html[data-theme="light"] .review-controls textarea {
+  background: rgba(255,255,255,.62);
+  color: #061525;
+  border-color: rgba(8,82,112,.18);
 }
 
 @media (max-width:1050px) {
@@ -2060,6 +2153,10 @@ html[data-theme="light"] .status-message {
   .dashboard-tools select {
     max-width: none;
   }
+
+  .admin-assignment-form {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width:640px) {
@@ -2082,6 +2179,10 @@ html[data-theme="light"] .status-message {
 
   .submission-panel {
     padding: 24px;
+  }
+
+  .admin-assignment-form {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -4,7 +4,7 @@
 
 1. Create a new project in Supabase.
 2. Open SQL Editor.
-3. Paste and run `supabase/schema.sql`.
+3. Paste and run `supabase/schema.sql` for a new project. For an existing project, run the files in `supabase/migrations` in filename order.
 4. Open Project Settings, then API.
 5. Copy the Project URL, anon key, and service role key.
 6. Create `.env.local` from `.env.example` and fill the values.
@@ -21,17 +21,27 @@
 
 The profile NPM must exactly match the NPM in the attendance sheet. This is how imported schedule rows are attached to the correct account.
 
-## 3. Create an assistant account
+## 3. Create the first administrator
+
+1. Register your own account through `/login` using an `@ui.ac.id` email.
+2. Open the `profiles` table in Supabase.
+3. Change your account's `role` from `student` to `admin`.
+4. Sign out and sign in again.
+5. Open `/admin` to manage account roles, assignments, submission windows, report reviews, and grade release.
+
+The first administrator is the only account that needs to be promoted manually. After that, administrators can assign student, assistant, or administrator access from the Accounts tab.
+
+## 4. Create an assistant account
 
 1. Register normally through `/login` or create the user in Supabase Authentication.
 2. Open Table Editor, then `profiles`.
-3. Change `role` from `student` to `assistant`.
+3. Change `role` from `student` to `assistant`, or let an administrator change it from `/admin`.
 4. Sign out and sign in again.
 5. The account is redirected to `/assistant-dashboard`.
 
 Use `admin` only for coordinators who should have full access.
 
-## 4. Configure the Google Sheet
+## 5. Configure the Google Sheet
 
 Follow `GOOGLE_SHEETS_TEMPLATE.md` exactly.
 
@@ -45,7 +55,7 @@ Put that URL in `ATTENDANCE_SHEET_CSV_URL`.
 
 The sheet can be publicly readable without being publicly editable. Never publish private grades in the same public tab.
 
-## 5. Synchronize attendance
+## 6. Synchronize attendance
 
 The route is:
 
@@ -70,7 +80,7 @@ The route downloads the CSV, finds each student by NPM, maps the assigned module
 
 You can later call this route from a scheduled Vercel Cron job or add a protected sync button for administrators.
 
-## 6. Submission behavior
+## 7. Submission behavior
 
 A student sees only their own imported sessions.
 
@@ -91,7 +101,9 @@ Full_Name_NPM_Report_Group_WeekN.pdf
 
 The file is stored privately in the `practicum-reports` bucket. Students can access only their own folder. Staff can access all reports through signed URLs.
 
-## 7. Late penalty
+Only PDF files up to 20 MB are accepted. The database records the submission time and late penalty, so those values cannot be changed from the browser.
+
+## 8. Late penalty
 
 The active rule is 10 points per started minute late, capped at 100 points.
 
@@ -101,13 +113,13 @@ penalty = min(100, ceil(minutes late) × 10)
 
 The system stores the submission timestamp, minutes late, and penalty separately so the laboratory can change grading policy later without losing the original timing data.
 
-## 8. Grades
+## 9. Grades
 
-Assistants can enter a grade and keep `grade_released` off during the semester. Students do not see unreleased grades. Turn release on at the end of the class or implement the future grade spreadsheet sync using `grade_imports`.
+Assistants can enter a grade and keep `grade_released` off during the semester. Review data is stored separately from student-readable submission data. Students can read a review only after its grade has been released.
 
-## 9. Plagiarism and EMAS automation placeholders
+## 10. Plagiarism and EMAS automation placeholders
 
-The `submissions` table already contains:
+The `submission_reviews` and `submissions` tables contain:
 
 - `plagiarism_status`
 - `similarity_score`
@@ -115,7 +127,7 @@ The `submissions` table already contains:
 
 A future screening worker can change the flow from `submitted` to `screening`, then `ready_for_emas`, and finally `uploaded_to_emas`. Keep browser automation outside the Next.js request process, preferably as a queued worker.
 
-## 10. GitHub and Vercel
+## 11. GitHub and Vercel
 
 Before pushing to GitHub:
 
