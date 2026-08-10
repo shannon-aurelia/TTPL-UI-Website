@@ -11,6 +11,16 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.lab_settings (
+  id boolean primary key default true check (id = true),
+  allow_external_student_registration boolean not null default true,
+  allowed_email_domains text[] not null default array['ui.ac.id','student.ui.ac.id'],
+  updated_at timestamptz not null default now(),
+  updated_by uuid references public.profiles(id)
+);
+
+insert into public.lab_settings (id) values (true) on conflict (id) do nothing;
+
 create table if not exists public.practicum_sessions (
   id uuid primary key default gen_random_uuid(),
   source_row_key text unique not null,
@@ -27,10 +37,31 @@ create table if not exists public.practicum_sessions (
   makeup_for_source_key text,
   submission_open boolean not null default false,
   deadline_at timestamptz,
+  qna_score numeric(5,2),
+  deadline_override_reason text,
+  deadline_updated_by uuid references public.profiles(id),
   notes text,
   sheet_updated_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table if not exists public.student_module_plans (
+  id uuid primary key default gen_random_uuid(),
+  source_row_key text unique not null,
+  student_id uuid not null references public.profiles(id) on delete cascade,
+  track text not null check (track in ('rl','idp','t3')),
+  week_number integer not null,
+  module_number integer not null check (module_number between 1 and 8),
+  report_group text not null,
+  report_label text not null,
+  planned_week_start date not null,
+  status text not null default 'expected' check (status in ('expected','deferred','completed')),
+  completed_session_id uuid references public.practicum_sessions(id) on delete set null,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (student_id, track, planned_week_start, report_group)
 );
 
 create table if not exists public.submissions (
@@ -43,6 +74,9 @@ create table if not exists public.submissions (
   original_file_name text not null,
   stored_file_name text not null,
   file_path text not null,
+  drive_file_id text,
+  drive_file_url text,
+  drive_sync_status text not null default 'pending' check (drive_sync_status in ('pending','synced','failed')),
   submitted_at timestamptz not null default now(),
   minutes_late integer not null default 0,
   late_penalty integer not null default 0 check (late_penalty between 0 and 100),
@@ -128,7 +162,9 @@ as $$
 $$;
 
 alter table public.profiles enable row level security;
+alter table public.lab_settings enable row level security;
 alter table public.practicum_sessions enable row level security;
+alter table public.student_module_plans enable row level security;
 alter table public.submissions enable row level security;
 alter table public.submission_reviews enable row level security;
 alter table public.sheet_sync_runs enable row level security;
@@ -138,8 +174,14 @@ create policy "profiles read own or staff" on public.profiles for select using (
 create policy "profiles insert own" on public.profiles for insert with check (id = auth.uid());
 create policy "profiles update own basic record" on public.profiles for update using (id = auth.uid() or public.is_staff()) with check (id = auth.uid() or public.is_staff());
 
+create policy "registration settings are readable" on public.lab_settings for select using (true);
+create policy "admins update registration settings" on public.lab_settings for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
 create policy "sessions read own or staff" on public.practicum_sessions for select using (student_id = auth.uid() or public.is_staff());
 create policy "sessions staff write" on public.practicum_sessions for all using (public.is_staff()) with check (public.is_staff());
+
+create policy "plans read own or staff" on public.student_module_plans for select to authenticated using (student_id = auth.uid() or public.is_staff());
+create policy "staff manage plans" on public.student_module_plans for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 create policy "submissions read own or staff" on public.submissions for select using (student_id = auth.uid() or public.is_staff());
 create policy "students insert own open submission" on public.submissions for insert with check (
@@ -280,8 +322,14 @@ returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
+declare
+  settings public.lab_settings%rowtype;
+  email_domain text;
 begin
-  if lower(new.email) not like '%@ui.ac.id' then
+  select * into settings from public.lab_settings where id = true;
+  email_domain := split_part(lower(new.email), '@', 2);
+  if settings.allow_external_student_registration is not true
+    and not (email_domain = any(settings.allowed_email_domains)) then
     raise exception 'An official UI email address is required';
   end if;
   new.email := lower(new.email);
@@ -293,6 +341,74 @@ drop trigger if exists require_ui_email on public.profiles;
 create trigger require_ui_email
 before insert or update of email on public.profiles
 for each row execute function public.require_ui_email();
+
+create or replace function public.staff_record_attendance(
+  target_student_id uuid,
+  selected_track text,
+  selected_module integer,
+  selected_week integer,
+  attended_time timestamptz,
+  score numeric default null,
+  makeup boolean default false,
+  attendance_notes text default null
+)
+returns uuid
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  group_id text;
+  group_label text;
+  session_id uuid;
+  deadline_value timestamptz;
+begin
+  if not public.is_staff() then raise exception 'Staff access required'; end if;
+  if selected_track not in ('rl','idp','t3') or selected_module not between 1 and 8 then
+    raise exception 'Invalid practicum module';
+  end if;
+
+  group_id := case
+    when selected_track = 'rl' and selected_module = 1 then 'rl-pretest'
+    when selected_track = 'rl' and selected_module in (2,3) then 'rl-2-3'
+    when selected_track = 'rl' and selected_module in (4,5) then 'rl-4-5'
+    when selected_track = 'rl' then 'rl-' || selected_module
+    when selected_track = 'idp' and selected_module = 1 then 'idp-pretest'
+    when selected_track = 'idp' then 'idp-' || selected_module
+    when selected_track = 't3' then 't3-' || selected_module
+  end;
+  group_label := case
+    when group_id = 'rl-2-3' then 'Modules 2-3 Combined Report'
+    when group_id = 'rl-4-5' then 'Modules 4-5 Combined Report'
+    when group_id like '%pretest' then upper(selected_track) || ' Pre-test'
+    else upper(selected_track) || ' Module ' || selected_module || ' Report'
+  end;
+  deadline_value := ((attended_time at time zone 'Asia/Jakarta')::date + 1 + time '23:59') at time zone 'Asia/Jakarta';
+
+  insert into public.practicum_sessions (
+    source_row_key, student_id, week_number, track, module_number, report_group, report_label,
+    scheduled_at, attendance_status, attended_at, is_makeup, submission_open, deadline_at,
+    qna_score, notes, sheet_updated_at
+  ) values (
+    'admin-' || gen_random_uuid()::text, target_student_id, selected_week, selected_track,
+    selected_module, group_id, group_label, attended_time, 'on_time', attended_time, makeup,
+    group_id not in ('rl-pretest','idp-pretest','t3-8'),
+    case when group_id in ('rl-pretest','idp-pretest','t3-8') then null else deadline_value end,
+    score, attendance_notes, now()
+  ) returning id into session_id;
+
+  update public.student_module_plans
+  set status = 'completed', completed_session_id = session_id, updated_at = now()
+  where student_id = target_student_id
+    and track = selected_track
+    and report_group = group_id
+    and week_number = selected_week;
+
+  return session_id;
+end;
+$$;
+
+revoke all on function public.staff_record_attendance(uuid,text,integer,integer,timestamptz,numeric,boolean,text) from public, anon;
+grant execute on function public.staff_record_attendance(uuid,text,integer,integer,timestamptz,numeric,boolean,text) to authenticated;
 
 create or replace function public.prevent_profile_role_change()
 returns trigger
@@ -318,6 +434,7 @@ for each row execute function public.prevent_profile_role_change();
 revoke execute on function public.handle_new_user() from anon, authenticated;
 revoke execute on function public.secure_student_submission() from anon, authenticated;
 revoke execute on function public.require_ui_email() from anon, authenticated;
+revoke execute on function public.staff_record_attendance(uuid,text,integer,integer,timestamptz,numeric,boolean,text) from anon;
 revoke execute on function public.prevent_profile_role_change() from anon, authenticated;
 revoke execute on function public.is_staff() from anon;
 revoke execute on function public.is_admin() from anon;

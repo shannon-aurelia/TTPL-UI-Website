@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Clock, Lock, Upload } from 'lucide-react';
 import { useAuth } from './AuthProvider';
-import { latePenalty, minutesLate, storedFileName } from '../lib/practicum';
+import { storedFileName } from '../lib/practicum';
 
 function formatDate(value) {
   if (!value) return 'Not scheduled';
@@ -52,8 +52,6 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
     }
     setUploading(session.id);
     setMessage('');
-    const now = new Date().toISOString();
-    const lateMinutes = minutesLate(now, session.deadline_at);
     const fileName = storedFileName({ name: profile.full_name, npm: profile.npm, reportGroup: session.report_group, weekNumber: session.week_number });
     const path = `${user.id}/${session.track}/${session.report_group}/week-${session.week_number}/${fileName}`;
     const { error: storageError } = await supabase.storage.from('practicum-reports').upload(path, file, { upsert: true, contentType: 'application/pdf' });
@@ -62,29 +60,27 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
       setUploading('');
       return;
     }
-    const existing = submissions.find((item) => item.session_id === session.id);
-    const payload = {
-      session_id: session.id,
-      student_id: user.id,
-      track: session.track,
-      report_group: session.report_group,
-      week_number: session.week_number,
-      original_file_name: file.name,
-      stored_file_name: fileName,
-      file_path: path,
-      submitted_at: now,
-      minutes_late: lateMinutes,
-      late_penalty: latePenalty(lateMinutes),
-      status: 'submitted'
-    };
-    const result = existing
-      ? await supabase.from('submissions').update(payload).eq('id', existing.id).select().single()
-      : await supabase.from('submissions').insert(payload).select().single();
-    if (result.error) {
-      setMessage(result.error.message);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const response = await fetch('/api/submissions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${sessionData.session?.access_token || ''}`
+      },
+      body: JSON.stringify({
+        sessionId: session.id,
+        filePath: path,
+        originalFileName: file.name,
+        storedFileName: fileName
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      setMessage(result.error || 'The report could not be recorded.');
     } else {
-      setSubmissions((current) => existing ? current.map((item) => item.id === existing.id ? result.data : item) : [...current, result.data]);
-      setMessage(`${fileName} has been received.`);
+      const existing = submissions.find((item) => item.session_id === session.id);
+      setSubmissions((current) => existing ? current.map((item) => item.id === existing.id ? result.submission : item) : [...current, result.submission]);
+      setMessage(result.driveSync === 'synced' ? `${fileName} has been received and archived.` : `${fileName} has been received. Drive archiving is pending.`);
     }
     setUploading('');
   };
