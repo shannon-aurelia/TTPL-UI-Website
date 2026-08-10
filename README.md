@@ -1,6 +1,6 @@
 # TTPL UI Digital Practicum Platform
 
-TTPL UI is a public laboratory website and practicum management platform for Laboratorium Tegangan Tinggi dan Pengukuran Listrik, Departemen Teknik Elektro FTUI.
+TTPL UI is a public laboratory website and practicum management platform for Laboratorium Tegangan Tinggi dan Pengukuran Listrik, Departemen Teknik Elektro FTUI. (KKI and Regular class)
 
 The repository combines the public-facing TTPL profile, practicum materials, official YouTube resources, multilingual navigation, visual backgrounds, RL/IDP/T3 virtual laboratories, student accounts, personalized schedules, report submissions, and an assistant review dashboard.
 
