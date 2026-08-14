@@ -2303,3 +2303,48 @@ html[data-theme="light"] .auth-card .auth-divider::after {
     line-height: 1.65;
   }
 }
+
+
+html[data-theme="light"] .auth-card {
+  background: #f7fcff !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: #061525 !important;
+}
+
+html[data-theme="light"] .auth-card::before {
+  display: none !important;
+}
+
+html[data-theme="light"] .auth-card .title,
+html[data-theme="light"] .auth-card .subtitle,
+html[data-theme="light"] .auth-card .auth-note,
+html[data-theme="light"] .auth-card .auth-divider,
+html[data-theme="light"] .auth-card .auth-form label {
+  color: #061525 !important;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .auth-card .eyebrow {
+  color: #005a55 !important;
+  text-shadow: none !important;
+}
+
+html[data-theme="light"] .auth-card .auth-form input {
+  background: #ffffff !important;
+  border: 2px solid #31596e !important;
+  color: #061525 !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .auth-card .auth-form input::placeholder {
+  color: #3f5e6e !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="light"] .auth-card .btn.ghost {
+  background: #e9f5fa !important;
+  border-color: #31596e !important;
+  color: #061525 !important;
+}
