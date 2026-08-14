@@ -18,7 +18,8 @@ values
   ('dominickdexter06@gmail.com', 'admin'),
   ('iftikharus.raudana@ui.ac.id', 'admin'),
   ('raudana.muntazar@gmail.com', 'admin'),
-  ('abdul.jafor@ui.ac.id', 'admin')
+  ('abdul.jafor@ui.ac.id', 'admin'),
+  ('nailafaizandee@gmail.com', 'admin')
 on conflict (email) do update set role = excluded.role;
 
 create or replace function public.handle_new_user()
