@@ -27,7 +27,7 @@ export default function Portal() {
     if (!user || !supabase) return;
     Promise.all([
       supabase.from('practicum_sessions').select('*').eq('student_id', user.id).order('scheduled_at'),
-      supabase.from('submissions').select('*').eq('student_id', user.id).order('submitted_at', { ascending: false })
+      supabase.from('submissions').select('*, submission_reviews(grade,feedback,grade_released)').eq('student_id', user.id).order('submitted_at', { ascending: false })
     ]).then(([sessionResult, submissionResult]) => {
       setSessions(sessionResult.data || []);
       setSubmissions(submissionResult.data || []);
@@ -56,7 +56,7 @@ export default function Portal() {
       <div className="card metric-card"><CalendarDays/><span>Assigned sessions</span><b>{sessions.length}</b></div>
       <div className="card metric-card"><Clock/><span>Open submissions</span><b>{active.length}</b></div>
       <div className="card metric-card"><CheckCircle/><span>Submitted</span><b>{completed}</b></div>
-      <div className="card metric-card"><FileText/><span>Grades released</span><b>{submissions.filter((item) => item.grade_released).length}</b></div>
+      <div className="card metric-card"><FileText/><span>Grades released</span><b>{submissions.filter((item) => item.submission_reviews?.grade_released).length}</b></div>
     </div>
     <div className="grid two dashboard-grid">
       <div className="card"><div className="eyebrow">Next schedule</div><h2>Upcoming practicum</h2><div className="schedule-list">{upcoming.length === 0 && <p className="muted">No upcoming session has been imported.</p>}{upcoming.map((session) => <div className="schedule-item" key={session.id}><div><b>{session.track.toUpperCase()} · Module {session.module_number}</b><p>{displayDate(session.scheduled_at)}</p></div><span className={`attendance-badge ${session.attendance_status}`}>{session.attendance_status.replace('_', ' ')}</span></div>)}</div></div>

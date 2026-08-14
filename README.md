@@ -15,6 +15,7 @@ The repository combines the public-facing TTPL profile, practicum materials, off
 - Report uploads available from both the dashboard and the relevant practicum page
 - Private PDF storage in Supabase Storage
 - Assistant dashboard grouped by student, module, week, attendance, deadline, and submission status
+- Administrator portal for account roles, assignments, submission windows, reviews, and grade release
 - Google Sheets attendance synchronization endpoint
 - Late submission calculation and grade-release controls
 

@@ -11,6 +11,16 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.lab_settings (
+  id boolean primary key default true check (id = true),
+  allow_external_student_registration boolean not null default true,
+  allowed_email_domains text[] not null default array['ui.ac.id','student.ui.ac.id'],
+  updated_at timestamptz not null default now(),
+  updated_by uuid references public.profiles(id)
+);
+
+insert into public.lab_settings (id) values (true) on conflict (id) do nothing;
+
 create table if not exists public.practicum_sessions (
   id uuid primary key default gen_random_uuid(),
   source_row_key text unique not null,
@@ -27,10 +37,31 @@ create table if not exists public.practicum_sessions (
   makeup_for_source_key text,
   submission_open boolean not null default false,
   deadline_at timestamptz,
+  qna_score numeric(5,2),
+  deadline_override_reason text,
+  deadline_updated_by uuid references public.profiles(id),
   notes text,
   sheet_updated_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table if not exists public.student_module_plans (
+  id uuid primary key default gen_random_uuid(),
+  source_row_key text unique not null,
+  student_id uuid not null references public.profiles(id) on delete cascade,
+  track text not null check (track in ('rl','idp','t3')),
+  week_number integer not null,
+  module_number integer not null check (module_number between 1 and 8),
+  report_group text not null,
+  report_label text not null,
+  planned_week_start date not null,
+  status text not null default 'expected' check (status in ('expected','deferred','completed')),
+  completed_session_id uuid references public.practicum_sessions(id) on delete set null,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (student_id, track, planned_week_start, report_group)
 );
 
 create table if not exists public.submissions (
@@ -43,13 +74,21 @@ create table if not exists public.submissions (
   original_file_name text not null,
   stored_file_name text not null,
   file_path text not null,
+  drive_file_id text,
+  drive_file_url text,
+  drive_sync_status text not null default 'pending' check (drive_sync_status in ('pending','synced','failed')),
   submitted_at timestamptz not null default now(),
   minutes_late integer not null default 0,
   late_penalty integer not null default 0 check (late_penalty between 0 and 100),
+  status text not null default 'submitted' check (status in ('submitted','screening','ready_for_emas','uploaded_to_emas','failed')),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.submission_reviews (
+  submission_id uuid primary key references public.submissions(id) on delete cascade,
   plagiarism_status text not null default 'pending' check (plagiarism_status in ('pending','processing','clear','review')),
   similarity_score numeric(5,2),
-  status text not null default 'submitted' check (status in ('submitted','screening','ready_for_emas','uploaded_to_emas','failed')),
-  grade numeric(5,2),
+  grade numeric(5,2) check (grade between 0 and 100),
   feedback text,
   grade_released boolean not null default false,
   graded_by uuid references public.profiles(id),
@@ -110,9 +149,24 @@ as $$
   );
 $$;
 
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin'
+  );
+$$;
+
 alter table public.profiles enable row level security;
+alter table public.lab_settings enable row level security;
 alter table public.practicum_sessions enable row level security;
+alter table public.student_module_plans enable row level security;
 alter table public.submissions enable row level security;
+alter table public.submission_reviews enable row level security;
 alter table public.sheet_sync_runs enable row level security;
 alter table public.grade_imports enable row level security;
 
@@ -120,8 +174,14 @@ create policy "profiles read own or staff" on public.profiles for select using (
 create policy "profiles insert own" on public.profiles for insert with check (id = auth.uid());
 create policy "profiles update own basic record" on public.profiles for update using (id = auth.uid() or public.is_staff()) with check (id = auth.uid() or public.is_staff());
 
+create policy "registration settings are readable" on public.lab_settings for select using (true);
+create policy "admins update registration settings" on public.lab_settings for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
 create policy "sessions read own or staff" on public.practicum_sessions for select using (student_id = auth.uid() or public.is_staff());
 create policy "sessions staff write" on public.practicum_sessions for all using (public.is_staff()) with check (public.is_staff());
+
+create policy "plans read own or staff" on public.student_module_plans for select to authenticated using (student_id = auth.uid() or public.is_staff());
+create policy "staff manage plans" on public.student_module_plans for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 create policy "submissions read own or staff" on public.submissions for select using (student_id = auth.uid() or public.is_staff());
 create policy "students insert own open submission" on public.submissions for insert with check (
@@ -133,6 +193,15 @@ create policy "students insert own open submission" on public.submissions for in
 create policy "students replace own submission" on public.submissions for update using (student_id = auth.uid() or public.is_staff()) with check (student_id = auth.uid() or public.is_staff());
 create policy "staff delete submissions" on public.submissions for delete using (public.is_staff());
 
+create policy "staff read reviews" on public.submission_reviews for select using (public.is_staff());
+create policy "students read released reviews" on public.submission_reviews for select using (
+  grade_released = true and exists (
+    select 1 from public.submissions
+    where submissions.id = submission_id and submissions.student_id = auth.uid()
+  )
+);
+create policy "staff manage reviews" on public.submission_reviews for all using (public.is_staff()) with check (public.is_staff());
+
 create policy "staff read sync runs" on public.sheet_sync_runs for select using (public.is_staff());
 create policy "staff read grade imports" on public.grade_imports for select using (public.is_staff());
 create policy "students read released imported grades" on public.grade_imports for select using (student_id = auth.uid() and released = true);
@@ -143,10 +212,20 @@ values ('practicum-reports', 'practicum-reports', false)
 on conflict (id) do update set public = false;
 
 create policy "students upload own reports" on storage.objects for insert to authenticated with check (
-  bucket_id = 'practicum-reports' and (storage.foldername(name))[1] = auth.uid()::text
+  bucket_id = 'practicum-reports'
+  and (storage.foldername(name))[1] = auth.uid()::text
+  and lower(storage.extension(name)) = 'pdf'
+  and coalesce(metadata->>'mimetype', '') = 'application/pdf'
+  and coalesce((metadata->>'size')::bigint, 0) <= 20971520
 );
 create policy "students replace own reports" on storage.objects for update to authenticated using (
   bucket_id = 'practicum-reports' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_staff())
+) with check (
+  bucket_id = 'practicum-reports'
+  and ((storage.foldername(name))[1] = auth.uid()::text or public.is_staff())
+  and lower(storage.extension(name)) = 'pdf'
+  and coalesce(metadata->>'mimetype', '') = 'application/pdf'
+  and coalesce((metadata->>'size')::bigint, 0) <= 20971520
 );
 create policy "students read own reports" on storage.objects for select to authenticated using (
   bucket_id = 'practicum-reports' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_staff())
@@ -155,31 +234,210 @@ create policy "staff delete reports" on storage.objects for delete to authentica
   bucket_id = 'practicum-reports' and public.is_staff()
 );
 
-create or replace function public.protect_submission_review_fields()
+create or replace function public.secure_student_submission()
 returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
+declare
+  assigned public.practicum_sessions%rowtype;
 begin
-  if not public.is_staff() then
-    if new.plagiarism_status is distinct from old.plagiarism_status
-      or new.similarity_score is distinct from old.similarity_score
-      or new.grade is distinct from old.grade
-      or new.feedback is distinct from old.feedback
-      or new.grade_released is distinct from old.grade_released
-      or new.graded_by is distinct from old.graded_by
-      or new.graded_at is distinct from old.graded_at then
-      raise exception 'Students cannot modify review or grade fields';
-    end if;
+  if public.is_staff() then
+    return new;
   end if;
+
+  select * into assigned
+  from public.practicum_sessions
+  where id = new.session_id and student_id = auth.uid();
+
+  if assigned.id is null
+    or assigned.submission_open is not true
+    or assigned.attendance_status not in ('on_time', 'late') then
+    raise exception 'This assignment is not open for submission';
+  end if;
+
+  if tg_op = 'UPDATE' and (
+    new.id is distinct from old.id
+    or new.session_id is distinct from old.session_id
+    or new.student_id is distinct from old.student_id
+  ) then
+    raise exception 'Submission ownership cannot be changed';
+  end if;
+
+  new.student_id := auth.uid();
+  new.track := assigned.track;
+  new.report_group := assigned.report_group;
+  new.week_number := assigned.week_number;
+  new.submitted_at := now();
+  new.minutes_late := case
+    when assigned.deadline_at is null then 0
+    else greatest(0, ceil(extract(epoch from (now() - assigned.deadline_at)) / 60.0)::integer)
+  end;
+  new.late_penalty := least(100, new.minutes_late * 10);
+  new.status := 'submitted';
+  new.updated_at := now();
+
+  if new.file_path not like (auth.uid()::text || '/%') then
+    raise exception 'Invalid report storage path';
+  end if;
+
   return new;
 end;
 $$;
 
 drop trigger if exists protect_submission_review_fields on public.submissions;
-create trigger protect_submission_review_fields
-before update on public.submissions
-for each row execute function public.protect_submission_review_fields();
+drop trigger if exists secure_student_submission on public.submissions;
+create trigger secure_student_submission
+before insert or update on public.submissions
+for each row execute function public.secure_student_submission();
+
+create or replace function public.admin_set_profile_role(target_id uuid, new_role text)
+returns void
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Administrator access required';
+  end if;
+  if new_role not in ('student', 'assistant', 'admin') then
+    raise exception 'Invalid account role';
+  end if;
+  if target_id = auth.uid() then
+    raise exception 'You cannot change your own role';
+  end if;
+  update public.profiles set role = new_role, updated_at = now() where id = target_id;
+  if not found then
+    raise exception 'Account not found';
+  end if;
+end;
+$$;
+
+revoke all on function public.admin_set_profile_role(uuid, text) from public;
+revoke execute on function public.admin_set_profile_role(uuid, text) from anon;
+grant execute on function public.admin_set_profile_role(uuid, text) to authenticated;
+
+create or replace function public.require_ui_email()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  settings public.lab_settings%rowtype;
+  email_domain text;
+begin
+  select * into settings from public.lab_settings where id = true;
+  email_domain := split_part(lower(new.email), '@', 2);
+  if settings.allow_external_student_registration is not true
+    and not (email_domain = any(settings.allowed_email_domains)) then
+    raise exception 'An official UI email address is required';
+  end if;
+  new.email := lower(new.email);
+  return new;
+end;
+$$;
+
+drop trigger if exists require_ui_email on public.profiles;
+create trigger require_ui_email
+before insert or update of email on public.profiles
+for each row execute function public.require_ui_email();
+
+create or replace function public.staff_record_attendance(
+  target_student_id uuid,
+  selected_track text,
+  selected_module integer,
+  selected_week integer,
+  attended_time timestamptz,
+  score numeric default null,
+  makeup boolean default false,
+  attendance_notes text default null
+)
+returns uuid
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  group_id text;
+  group_label text;
+  session_id uuid;
+  deadline_value timestamptz;
+begin
+  if not public.is_staff() then raise exception 'Staff access required'; end if;
+  if selected_track not in ('rl','idp','t3') or selected_module not between 1 and 8 then
+    raise exception 'Invalid practicum module';
+  end if;
+
+  group_id := case
+    when selected_track = 'rl' and selected_module = 1 then 'rl-pretest'
+    when selected_track = 'rl' and selected_module in (2,3) then 'rl-2-3'
+    when selected_track = 'rl' and selected_module in (4,5) then 'rl-4-5'
+    when selected_track = 'rl' then 'rl-' || selected_module
+    when selected_track = 'idp' and selected_module = 1 then 'idp-pretest'
+    when selected_track = 'idp' then 'idp-' || selected_module
+    when selected_track = 't3' then 't3-' || selected_module
+  end;
+  group_label := case
+    when group_id = 'rl-2-3' then 'Modules 2-3 Combined Report'
+    when group_id = 'rl-4-5' then 'Modules 4-5 Combined Report'
+    when group_id like '%pretest' then upper(selected_track) || ' Pre-test'
+    else upper(selected_track) || ' Module ' || selected_module || ' Report'
+  end;
+  deadline_value := ((attended_time at time zone 'Asia/Jakarta')::date + 1 + time '23:59') at time zone 'Asia/Jakarta';
+
+  insert into public.practicum_sessions (
+    source_row_key, student_id, week_number, track, module_number, report_group, report_label,
+    scheduled_at, attendance_status, attended_at, is_makeup, submission_open, deadline_at,
+    qna_score, notes, sheet_updated_at
+  ) values (
+    'admin-' || gen_random_uuid()::text, target_student_id, selected_week, selected_track,
+    selected_module, group_id, group_label, attended_time, 'on_time', attended_time, makeup,
+    group_id not in ('rl-pretest','idp-pretest','t3-8'),
+    case when group_id in ('rl-pretest','idp-pretest','t3-8') then null else deadline_value end,
+    score, attendance_notes, now()
+  ) returning id into session_id;
+
+  update public.student_module_plans
+  set status = 'completed', completed_session_id = session_id, updated_at = now()
+  where student_id = target_student_id
+    and track = selected_track
+    and report_group = group_id
+    and week_number = selected_week;
+
+  return session_id;
+end;
+$$;
+
+revoke all on function public.staff_record_attendance(uuid,text,integer,integer,timestamptz,numeric,boolean,text) from public, anon;
+grant execute on function public.staff_record_attendance(uuid,text,integer,integer,timestamptz,numeric,boolean,text) to authenticated;
+
+create or replace function public.prevent_profile_role_change()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new.role is distinct from old.role and not public.is_admin() then
+    raise exception 'Only administrators can change account roles';
+  end if;
+  if new.id is distinct from old.id or new.email is distinct from old.email then
+    raise exception 'Account identity cannot be changed';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists prevent_profile_role_change on public.profiles;
+create trigger prevent_profile_role_change
+before update on public.profiles
+for each row execute function public.prevent_profile_role_change();
+
+revoke execute on function public.handle_new_user() from anon, authenticated;
+revoke execute on function public.secure_student_submission() from anon, authenticated;
+revoke execute on function public.require_ui_email() from anon, authenticated;
+revoke execute on function public.staff_record_attendance(uuid,text,integer,integer,timestamptz,numeric,boolean,text) from anon;
+revoke execute on function public.prevent_profile_role_change() from anon, authenticated;
+revoke execute on function public.is_staff() from anon;
+revoke execute on function public.is_admin() from anon;
 
 revoke update on public.profiles from authenticated;
 grant update (full_name, npm, group_name, updated_at) on public.profiles to authenticated;
