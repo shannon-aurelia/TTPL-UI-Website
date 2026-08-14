@@ -2248,3 +2248,58 @@ html[data-theme="light"] .review-controls textarea {
 .module-card h3 {
   letter-spacing: -0.01em !important;
 }
+
+
+html[data-theme="light"] .auth-card {
+  background: linear-gradient(145deg, rgba(255,255,255,.92), rgba(235,251,255,.88)) !important;
+  border-color: rgba(6,72,98,.24) !important;
+  box-shadow: 0 24px 70px rgba(8,65,86,.18) !important;
+}
+
+html[data-theme="light"] .auth-card .title {
+  color: #061525 !important;
+}
+
+html[data-theme="light"] .auth-card .subtitle,
+html[data-theme="light"] .auth-card .auth-note,
+html[data-theme="light"] .auth-card .auth-divider,
+html[data-theme="light"] .auth-card .auth-form label {
+  color: #27485a !important;
+}
+
+html[data-theme="light"] .auth-card .eyebrow {
+  color: #006762 !important;
+}
+
+html[data-theme="light"] .auth-card .status-message.warning {
+  background: #fff8d8 !important;
+  border-color: #c69b16 !important;
+  color: #493600 !important;
+}
+
+html[data-theme="light"] .auth-card .status-message.error {
+  background: #fff0f2 !important;
+  border-color: #be4356 !important;
+  color: #701d2b !important;
+}
+
+html[data-theme="light"] .auth-card .auth-divider::before,
+html[data-theme="light"] .auth-card .auth-divider::after {
+  background: rgba(6,72,98,.24) !important;
+}
+
+@media (max-width: 640px) {
+  .auth-section {
+    padding-top: 36px;
+  }
+
+  .auth-card .title {
+    font-size: 48px;
+    line-height: 1.05;
+  }
+
+  .auth-card .subtitle {
+    font-size: 17px;
+    line-height: 1.65;
+  }
+}
