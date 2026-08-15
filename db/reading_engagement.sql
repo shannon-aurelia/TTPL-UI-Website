@@ -16,7 +16,6 @@ create table if not exists public.reading_sessions (
   page_seconds jsonb not null default '{}'::jsonb,
   focus_losses integer not null default 0 check (focus_losses >= 0),
   completion_percent numeric(5,2) not null default 0 check (completion_percent between 0 and 100),
-  engagement_score numeric(5,2) not null default 0 check (engagement_score between 0 and 100),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -47,4 +46,4 @@ with check ((select auth.uid()) = student_id);
 
 grant select, insert, update on public.reading_sessions to authenticated;
 
-comment on table public.reading_sessions is 'Aggregated TTPL PDF reading engagement telemetry. This measures interaction, not comprehension.';
+comment on table public.reading_sessions is 'Aggregated TTPL PDF interaction telemetry. It measures reading behavior and must not be treated as proof of comprehension or used as an automated grading decision.';
