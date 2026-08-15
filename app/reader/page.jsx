@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import TrackedPdfReader from '../../components/TrackedPdfReader';
+import './reader.css';
 
 const allowedDocuments = new Set([
   '/modules/modul-rangkaian-listrik-2025-2026.pdf',
