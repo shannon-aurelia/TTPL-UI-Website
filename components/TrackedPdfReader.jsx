@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, BookOpen, Clock3, Eye, Loader2, MousePointer2 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from './AuthProvider';
+import ReadingCommentsPanel from './ReadingCommentsPanel';
 
 const PDFJS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
 const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -280,6 +281,8 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
           {Array.from({ length: pageCount }, (_, index) => index + 1).map((page) => <article className="tracked-pdf-page" data-page={page} key={page} ref={(element) => { if (element) pageRefs.current.set(page, element); else pageRefs.current.delete(page); }}><div className="pdf-page-placeholder">Page {page}</div></article>)}
         </div>
       </main>
+
+      <ReadingCommentsPanel supabase={supabase} userId={user.id} track={track} moduleNumber={moduleNumber} src={src} currentPage={currentPage}/>
     </div>
   </section>;
 }
