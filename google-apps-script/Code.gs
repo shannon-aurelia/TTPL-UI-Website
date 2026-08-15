@@ -48,6 +48,39 @@ function appendSubmission(spreadsheet, data, file) {
   ]);
 }
 
+function appendAttendance(spreadsheet, data) {
+  const sheet = spreadsheet.getSheetByName('QnA Attendance');
+  const rows = Array.isArray(data) ? data : [data];
+  rows.forEach(function (entry) {
+    const existing = sheet.createTextFinder(entry.sourceKey).matchEntireCell(true).findNext();
+    const values = [
+      entry.sourceKey,
+      entry.npm || '',
+      entry.fullName,
+      entry.track,
+      entry.moduleLabel,
+      entry.weekNumber,
+      entry.attendedDate,
+      entry.attendedTime,
+      entry.qnaScore === '' ? '' : entry.qnaScore,
+      entry.attendanceStatus || 'on_time',
+      Boolean(entry.isMakeup),
+      '',
+      '',
+      '',
+      entry.notes || '',
+      entry.assistantCode || '',
+      false
+    ];
+    if (existing) {
+      sheet.getRange(existing.getRow(), 1, 1, values.length).setValues([values]);
+    } else {
+      sheet.appendRow(values);
+    }
+  });
+  return { saved: rows.length };
+}
+
 function uploadReport(config, spreadsheet, data) {
   if (data.mimeType !== 'application/pdf') throw new Error('Only PDF files are accepted');
   const bytes = Utilities.base64Decode(data.base64);
@@ -67,6 +100,7 @@ function doPost(event) {
     const spreadsheet = SpreadsheetApp.openById(config.spreadsheetId);
     if (body.action === 'attendanceRows') return jsonResponse({ rows: sheetRows(spreadsheet, 'QnA Attendance') });
     if (body.action === 'modulePlanRows') return jsonResponse({ rows: sheetRows(spreadsheet, 'Module Plans') });
+    if (body.action === 'appendAttendance') return jsonResponse({ data: appendAttendance(spreadsheet, body.data) });
     if (body.action === 'uploadReport') return jsonResponse({ data: uploadReport(config, spreadsheet, body.data) });
     return jsonResponse({ error: 'Unknown action' });
   } catch (error) {

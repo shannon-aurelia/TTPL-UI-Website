@@ -104,7 +104,13 @@ export default function AdminPage() {
   useEffect(() => { load(); }, [load]);
 
   const students = useMemo(() => profiles.filter((item) => item.role === 'student'), [profiles]);
-  const studentChoices = useMemo(() => students.filter((item) => `${item.full_name} ${item.npm || ''} ${item.email}`.toLowerCase().includes(studentQuery.toLowerCase())), [students, studentQuery]);
+  const studentChoices = useMemo(() => {
+    const normalized = studentQuery.trim().toLowerCase();
+    if (normalized.length < 2) return [];
+    return students
+      .filter((item) => `${item.full_name} ${item.npm || ''} ${item.email}`.toLowerCase().includes(normalized))
+      .slice(0, 5);
+  }, [students, studentQuery]);
   const missingPlans = useMemo(() => plans.filter((item) => item.status !== 'completed'), [plans]);
   const filteredProfiles = useMemo(() => profiles.filter((item) => `${item.full_name} ${item.npm || ''} ${item.email}`.toLowerCase().includes(query.toLowerCase())), [profiles, query]);
   const filteredSessions = useMemo(() => sessions.filter((item) => `${item.profiles?.full_name || ''} ${item.profiles?.npm || ''} ${item.track} ${item.report_label}`.toLowerCase().includes(query.toLowerCase())), [sessions, query]);
@@ -141,7 +147,45 @@ export default function AdminPage() {
       notes: attendance.notes
     }));
     const { data, error } = await supabase.rpc('staff_record_attendance_batch', { entries });
-    setMessage(error ? error.message : `${data?.saved || selectedCount} students saved. Deadlines were created for tomorrow at 23:59 WIB.`);
+    let sheetError = '';
+    if (!error) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sheetEntries = entries.map((entry) => {
+        const student = selected[entry.student_id].student;
+        return {
+          sourceKey: `web-${entry.student_id}-${attendance.track}-${attendance.module}-${attendance.attended_date}-${attendance.attended_time}`,
+          npm: student.npm || '',
+          fullName: student.full_name,
+          track: attendance.track,
+          moduleLabel: attendance.module,
+          weekNumber: Number(attendance.week_number),
+          attendedDate: attendance.attended_date,
+          attendedTime: attendance.attended_time,
+          qnaScore: entry.qna_score,
+          attendanceStatus: 'on_time',
+          isMakeup: attendance.is_makeup,
+          notes: attendance.notes,
+          assistantCode: ''
+        };
+      });
+      const sheetResponse = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionData.session?.access_token || ''}`
+        },
+        body: JSON.stringify({ entries: sheetEntries })
+      });
+      if (!sheetResponse.ok) {
+        const sheetResult = await sheetResponse.json();
+        sheetError = sheetResult.error || 'Sheet update failed';
+      }
+    }
+    setMessage(error
+      ? error.message
+      : sheetError
+        ? `${data || selectedCount} students saved to the portal, but the Sheet could not update: ${sheetError}`
+        : `${data || selectedCount} students saved to the portal and Google Sheet. Deadlines were created for tomorrow at 23:59 WIB.`);
     if (!error) {
       setSelected({});
       await load();
@@ -249,8 +293,9 @@ export default function AdminPage() {
         </div>
 
         <div className="batch-heading"><div><div className="eyebrow">Step 2</div><h2>Mark everyone who came</h2></div></div>
-        <div className="student-picker-search"><Search size={17}/><input placeholder="Find student by name, NPM, or email" value={studentQuery} onChange={(event) => setStudentQuery(event.target.value)}/></div>
+        <div className="student-picker-search"><Search size={17}/><input placeholder="Type at least 2 characters to find up to 5 students" value={studentQuery} onChange={(event) => setStudentQuery(event.target.value)}/></div>
         <div className="batch-student-list">
+          {studentQuery.trim().length < 2 && <p className="muted">Search first. The full student list stays hidden so this remains fast with 100+ students.</p>}
           {studentChoices.map((student) => {
             const entry = selected[student.id];
             return <div className={`batch-student-row ${entry ? 'selected' : ''}`} key={student.id}>
