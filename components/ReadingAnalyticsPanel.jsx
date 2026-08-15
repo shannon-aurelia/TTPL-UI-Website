@@ -72,8 +72,10 @@ export default function ReadingAnalyticsPanel() {
     return [...map.values()].map((item) => {
       const pagesSeen = item.pages_seen_set.size;
       const coverage = item.total_pages ? (pagesSeen / item.total_pages) * 100 : 0;
-      const dwellPages = Object.values(item.page_seconds_total).filter((seconds) => Number(seconds) >= 10).length;
-      return { ...item, pagesSeen, coverage, dwellPages };
+      const dwellPages10 = Object.values(item.page_seconds_total).filter((seconds) => Number(seconds) >= 10).length;
+      const dwellPages30 = Object.values(item.page_seconds_total).filter((seconds) => Number(seconds) >= 30).length;
+      const dwellPages60 = Object.values(item.page_seconds_total).filter((seconds) => Number(seconds) >= 60).length;
+      return { ...item, pagesSeen, coverage, dwellPages10, dwellPages30, dwellPages60 };
     });
   }, [rows]);
 
@@ -98,13 +100,13 @@ export default function ReadingAnalyticsPanel() {
 
     <div className="dashboard-stats">
       <div className="card metric-card"><BookOpenCheck/><span>Tracked module records</span><b>{grouped.length}</b></div>
-      <div className="card metric-card"><Clock3/><span>Total active reading</span><b>{fmtSeconds(totalActiveSeconds)}</b></div>
+      <div className="card metric-card"><Clock3/><span>Total qualified reading</span><b>{fmtSeconds(totalActiveSeconds)}</b></div>
       <div className="card metric-card"><Clock3/><span>Active in 15 min</span><b>{activeReaders}</b></div>
       <div className="card metric-card"><BookOpenCheck/><span>95%+ coverage</span><b>{completedReaders}</b></div>
     </div>
 
     <div className="card dashboard-tools"><label><Search size={17}/><input placeholder="Search name, NPM, email, track, or module" value={query} onChange={(event) => setQuery(event.target.value)}/></label><select value={track} onChange={(event) => setTrack(event.target.value)}><option value="all">All tracks</option><option value="rl">RL</option><option value="idp">IDP</option><option value="t3">T3</option></select></div>
 
-    <div className="card table-card"><div className="table-scroll"><table className="dashboard-table reading-table"><thead><tr><th>Student</th><th>Module</th><th>Coverage</th><th>Active time</th><th>Page dwell</th><th>Sessions</th><th>Focus / idle</th><th>Last activity</th></tr></thead><tbody>{filtered.map((row) => <tr key={`${row.student_id}-${row.track}-${row.module_number}-${row.document_path}`}><td><b>{row.profiles?.full_name || 'Student'}</b><small>{row.profiles?.npm || row.profiles?.email}</small></td><td><b>{row.track.toUpperCase()} · M{row.module_number}</b><small>{row.document_title || row.document_path.split('/').pop()}</small></td><td><b>{Math.round(row.coverage)}%</b><small>{row.pagesSeen}/{row.total_pages || '—'} pages · max scroll {Math.round(row.max_scroll_depth)}%</small></td><td>{fmtSeconds(row.active_seconds)}</td><td>{row.dwellPages} pages with 10s+<small>Per-page dwell is retained for audit</small></td><td>{row.sessions}</td><td>{row.focus_losses} focus changes<small>{fmtSeconds(row.idle_seconds)} idle</small></td><td>{fmtDate(row.last_seen_at)}</td></tr>)}</tbody></table>{filtered.length === 0 && <p className="muted reading-empty">No reading sessions match this filter yet.</p>}</div></div>
+    <div className="card table-card"><div className="table-scroll"><table className="dashboard-table reading-table"><thead><tr><th>Student</th><th>Module</th><th>Coverage</th><th>Qualified time</th><th>Dwell quality</th><th>Sessions</th><th>Focus / idle</th><th>Last activity</th></tr></thead><tbody>{filtered.map((row) => <tr key={`${row.student_id}-${row.track}-${row.module_number}-${row.document_path}`}><td><b>{row.profiles?.full_name || 'Student'}</b><small>{row.profiles?.npm || row.profiles?.email}</small></td><td><b>{row.track.toUpperCase()} · M{row.module_number}</b><small>{row.document_title || row.document_path.split('/').pop()}</small></td><td><b>{Math.round(row.coverage)}%</b><small>{row.pagesSeen}/{row.total_pages || '—'} qualified pages · max scroll {Math.round(row.max_scroll_depth)}%</small></td><td>{fmtSeconds(row.active_seconds)}</td><td><b>{row.dwellPages30} pages ≥30s</b><small>{row.dwellPages10} ≥10s · {row.dwellPages60} ≥60s</small></td><td>{row.sessions}</td><td>{row.focus_losses} focus changes<small>{fmtSeconds(row.idle_seconds)} idle</small></td><td>{fmtDate(row.last_seen_at)}</td></tr>)}</tbody></table>{filtered.length === 0 && <p className="muted reading-empty">No reading sessions match this filter yet.</p>}</div></div>
   </section>;
 }
