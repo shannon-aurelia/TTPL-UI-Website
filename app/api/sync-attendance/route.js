@@ -25,6 +25,11 @@ function parseCsv(text) {
   return rows.map((cells) => Object.fromEntries(headers.map((header, index) => [header, (cells[index] || '').trim()])));
 }
 
+function parseModuleNumber(value) {
+  const match = String(value || '').match(/\d+/);
+  return match ? Number(match[0]) : Number.NaN;
+}
+
 function jakartaDate(date, time) {
   if (!date) return null;
   return new Date(`${date}T${time || '08:00'}:00+07:00`);
@@ -98,7 +103,7 @@ export async function POST(request) {
     const { data: profile } = await profileQuery;
     if (!profile) { results.push({ source_key: record.source_key, status: 'plan_student_not_found', npm: record.npm }); continue; }
     const track = record.track.toLowerCase();
-    const moduleNumber = Number(record.module_number);
+    const moduleNumber = parseModuleNumber(record.module_number);
     const group = reportGroupFor(track, moduleNumber);
     const payload = {
       source_row_key: record.source_key || `plan-${record.npm}-${track}-${record.week_number}-${moduleNumber}`,
@@ -120,7 +125,7 @@ export async function POST(request) {
     const { data: profile } = await supabase.from('profiles').select('id').eq('npm', record.npm).maybeSingle();
     if (!profile) { results.push({ source_key: record.source_key, status: 'student_not_found', npm: record.npm }); continue; }
     const track = record.track.toLowerCase();
-    const moduleNumber = Number(record.module_number);
+    const moduleNumber = parseModuleNumber(record.module_number);
     const group = reportGroupFor(track, moduleNumber);
     const attendedAt = jakartaDate(record.attended_date, record.attended_time);
     if (!attendedAt) { results.push({ source_key: record.source_key, status: 'attendance_date_missing', npm: record.npm }); continue; }

@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import ReportSubmissionPanel from '../../../components/ReportSubmissionPanel';
 
+const pretestPdf = '/modules/modul-1-dasar-pengukuran-besaran-listrik.pdf';
+const modulePdf = '/modules/modul-instrumentasi-pengukuran-listrik-2025-2026.pdf';
 const modules = [
   'Pre-test – Dasar Pengukuran Besaran Listrik',
   'Pengukuran Analog',
@@ -12,6 +14,11 @@ const modules = [
   'Pengukuran Konsumsi Energi'
 ];
 
+function readerHref(moduleNumber, title) {
+  const src = moduleNumber === 1 ? pretestPdf : modulePdf;
+  return `/reader?track=idp&module=${moduleNumber}&src=${encodeURIComponent(src)}&title=${encodeURIComponent(title)}`;
+}
+
 export default function Page() {
   return <section className="section module-layout">
     <aside className="sidebar liquid">
@@ -20,8 +27,8 @@ export default function Page() {
       <Link className="side-link" href="/practicum/idp">Instrumentation & Measurement</Link>
       <Link className="side-link" href="/practicum/t3">High Voltage & High Current</Link>
       <br/>
-      <a className="side-link" href="/modules/modul-1-dasar-pengukuran-besaran-listrik.pdf" target="_blank">Pre-test Module</a>
-      <a className="side-link" href="/modules/modul-instrumentasi-pengukuran-listrik-2025-2026.pdf" target="_blank">Modules 2–8 PDF</a>
+      <Link className="side-link" href={readerHref(1, modules[0])}>Tracked Pre-test Module</Link>
+      <Link className="side-link" href={readerHref(2, modules[1])}>Tracked Modules 2–8</Link>
       <a className="side-link" href="https://www.youtube.com/@ttplftui" target="_blank">YouTube Playlist</a>
       <Link className="side-link" href="/portal">Student Dashboard</Link>
     </aside>
@@ -32,7 +39,7 @@ export default function Page() {
         <div className="num">Module {index + 1}</div>
         <h3>{module}</h3>
         <p>{index === 0 ? 'Pre-test resources and schedule. No report upload is enabled here.' : 'Review the instrument, measurement procedure, and related TTPL video before lab.'}</p>
-        <a className="chip" href={index === 0 ? '/modules/modul-1-dasar-pengukuran-besaran-listrik.pdf' : '/modules/modul-instrumentasi-pengukuran-listrik-2025-2026.pdf'} target="_blank">PDF</a>
+        <Link className="chip" href={readerHref(index + 1, module)}>Read PDF</Link>
         <a className="chip" href="https://www.youtube.com/@ttplftui" target="_blank">Video</a>
       </div>)}</div>
       <ReportSubmissionPanel track="idp" />

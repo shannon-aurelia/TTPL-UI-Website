@@ -70,12 +70,28 @@ export default function Login() {
     setSubmitting(false);
   };
 
+  const sendPasswordReset = async () => {
+    if (!supabase) return;
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError('Enter your email address first.');
+      return;
+    }
+    setError('');
+    setNotice('');
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: `${window.location.origin}/reset-password`
+    });
+    if (resetError) setError(resetError.message);
+    else setNotice('Password reset email sent. Open the link in your inbox to choose a new password.');
+  };
+
   const signInWithGoogle = async () => {
     if (!supabase) return;
     setError('');
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/portal` }
+      options: { redirectTo: `${window.location.origin}/login`, queryParams: { prompt: 'select_account' } }
     });
     if (authError) setError(authError.message);
   };
@@ -97,6 +113,7 @@ export default function Login() {
         <label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} /></label>
         <button className="btn" type="submit" disabled={submitting}>{submitting ? 'Please wait...' : registering ? 'Create student account' : 'Sign in'}</button>
       </form>
+      {!registering && <button className="auth-text-button" type="button" onClick={sendPasswordReset}>Forgot password?</button>}
       <div className="auth-divider"><span>or</span></div>
       <button className="btn ghost auth-google" type="button" onClick={signInWithGoogle}>Continue with Google</button>
       {registering && <p className="auth-note">{allowExternalRegistration ? 'External email registration is temporarily enabled for testing.' : 'Registration is restricted to UI email accounts.'}</p>}
