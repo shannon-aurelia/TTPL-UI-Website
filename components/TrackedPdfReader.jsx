@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, Clock3, Eye, Gauge, Loader2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, Clock3, Eye, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from './AuthProvider';
 
@@ -33,19 +33,6 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function scoreSession({ totalPages, pagesSeen, pageSeconds, activeSeconds, idleSeconds, focusLosses }) {
-  if (!totalPages) return { completion: 0, score: 0 };
-  const coverage = clamp((pagesSeen.length / totalPages) * 100, 0, 100);
-  const timeScore = clamp((activeSeconds / (totalPages * 45)) * 100, 0, 100);
-  const studiedPages = Object.values(pageSeconds).filter((seconds) => Number(seconds) >= 10).length;
-  const dwellScore = clamp((studiedPages / totalPages) * 100, 0, 100);
-  const totalObserved = activeSeconds + idleSeconds;
-  const idleShare = totalObserved ? idleSeconds / totalObserved : 0;
-  const focusScore = clamp(100 - focusLosses * 5 - idleShare * 50, 0, 100);
-  const score = coverage * 0.4 + timeScore * 0.3 + dwellScore * 0.2 + focusScore * 0.1;
-  return { completion: coverage, score: clamp(score, 0, 100) };
-}
-
 function formatTime(seconds) {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -71,11 +58,11 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
   const lastActivity = useRef(Date.now());
   const latest = useRef({});
 
-  const metrics = useMemo(() => scoreSession({ totalPages: pageCount, pagesSeen, pageSeconds, activeSeconds, idleSeconds, focusLosses }), [pageCount, pagesSeen, pageSeconds, activeSeconds, idleSeconds, focusLosses]);
+  const completion = useMemo(() => pageCount ? clamp((pagesSeen.length / pageCount) * 100, 0, 100) : 0, [pageCount, pagesSeen]);
 
   useEffect(() => {
-    latest.current = { pageCount, activeSeconds, idleSeconds, focusLosses, pagesSeen, pageSeconds, maxScrollDepth, metrics };
-  }, [pageCount, activeSeconds, idleSeconds, focusLosses, pagesSeen, pageSeconds, maxScrollDepth, metrics]);
+    latest.current = { pageCount, activeSeconds, idleSeconds, focusLosses, pagesSeen, pageSeconds, maxScrollDepth, completion };
+  }, [pageCount, activeSeconds, idleSeconds, focusLosses, pagesSeen, pageSeconds, maxScrollDepth, completion]);
 
   useEffect(() => {
     if (loading || !user || !supabase || profile?.role !== 'student') return;
@@ -97,7 +84,7 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
     if (loading || !user) return;
     if (profile?.role !== 'student') {
       setStatus('blocked');
-      setError('Reading analytics are recorded only for student accounts.');
+      setError('Reading telemetry is recorded only for student accounts.');
       return;
     }
     let cancelled = false;
@@ -132,8 +119,7 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
         if (disposed) break;
         const base = page.getViewport({ scale: 1 });
         const availableWidth = Math.min(920, Math.max(280, container.clientWidth - 24));
-        const scale = availableWidth / base.width;
-        const viewport = page.getViewport({ scale });
+        const viewport = page.getViewport({ scale: availableWidth / base.width });
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
         canvas.width = Math.floor(viewport.width);
@@ -218,8 +204,7 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
         pages_seen: data.pagesSeen || [],
         page_seconds: data.pageSeconds || {},
         focus_losses: data.focusLosses || 0,
-        completion_percent: Number((data.metrics?.completion || 0).toFixed(2)),
-        engagement_score: Number((data.metrics?.score || 0).toFixed(2)),
+        completion_percent: Number((data.completion || 0).toFixed(2)),
         updated_at: new Date().toISOString()
       }).eq('id', sessionId);
     };
@@ -234,19 +219,19 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
   }, [sessionId, supabase]);
 
   if (loading) return <section className="section reader-state"><Loader2 className="spin"/><h1>Loading student session...</h1></section>;
-  if (!user) return <section className="section reader-state"><BookOpen/><h1>Sign in to open tracked modules.</h1><p>This viewer records reading engagement for your TTPL student account.</p><Link className="btn" href="/login">Student login</Link></section>;
+  if (!user) return <section className="section reader-state"><BookOpen/><h1>Sign in to open tracked modules.</h1><p>This viewer records reading interaction for your TTPL student account.</p><Link className="btn" href="/login">Student login</Link></section>;
   if (status === 'error' || status === 'blocked') return <section className="section reader-state"><h1>Viewer unavailable.</h1><p>{error}</p><Link className="btn ghost" href="/practicum">Back to practicum</Link></section>;
 
   return <section className="section tracked-reader-page">
     <div className="reader-toolbar liquid">
-      <div className="reader-heading"><Link className="reader-back" href={`/practicum/${track}`}><ArrowLeft size={18}/> Back</Link><div><div className="eyebrow">Tracked module reader</div><h1>{title || `${track.toUpperCase()} Module ${moduleNumber}`}</h1><p>Interaction data estimates reading engagement. It does not measure comprehension.</p></div></div>
+      <div className="reader-heading"><Link className="reader-back" href={`/practicum/${track}`}><ArrowLeft size={18}/> Back</Link><div><div className="eyebrow">Tracked module reader</div><h1>{title || `${track.toUpperCase()} Module ${moduleNumber}`}</h1><p>TTPL records page coverage, active time, dwell time, scroll progress, and focus/idle behavior. These metrics do not prove comprehension.</p></div></div>
       <div className="reader-metrics">
-        <div><Eye size={16}/><span>Pages</span><b>{pagesSeen.length}/{pageCount || '–'}</b></div>
-        <div><Clock3 size={16}/><span>Active</span><b>{formatTime(activeSeconds)}</b></div>
-        <div><Gauge size={16}/><span>Engagement</span><b>{Math.round(metrics.score)}</b></div>
+        <div><Eye size={16}/><span>Pages seen</span><b>{pagesSeen.length}/{pageCount || '–'}</b></div>
+        <div><Clock3 size={16}/><span>Active time</span><b>{formatTime(activeSeconds)}</b></div>
+        <div><BookOpen size={16}/><span>Coverage</span><b>{Math.round(completion)}%</b></div>
       </div>
-      <div className="reader-progress"><span style={{ width: `${metrics.completion}%` }}/></div>
-      <small>Current page {currentPage} · {Math.round(metrics.completion)}% page coverage · {Math.round(maxScrollDepth)}% scroll depth</small>
+      <div className="reader-progress"><span style={{ width: `${completion}%` }}/></div>
+      <small>Current page {currentPage} · max scroll depth {Math.round(maxScrollDepth)}% · focus changes {focusLosses}</small>
     </div>
 
     {status === 'loading' && <div className="reader-loading"><Loader2 className="spin"/><p>Opening PDF...</p></div>}
