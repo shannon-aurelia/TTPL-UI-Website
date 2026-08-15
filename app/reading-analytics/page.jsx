@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import ReadingAnalyticsPanel from '../../components/ReadingAnalyticsPanel';
+import StaffReadingComments from '../../components/StaffReadingComments';
 import './reading.css';
 
 export default function ReadingAnalyticsPage() {
@@ -25,5 +26,6 @@ export default function ReadingAnalyticsPage() {
   return <section className="section reading-analytics-page">
     <Link className="reading-back" href={profile.role === 'admin' ? '/admin' : '/assistant-dashboard'}><ArrowLeft size={17}/> Back to dashboard</Link>
     <ReadingAnalyticsPanel />
+    <StaffReadingComments />
   </section>;
 }
