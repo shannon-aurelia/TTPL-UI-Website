@@ -81,11 +81,32 @@ function appendAttendance(spreadsheet, data) {
   return { saved: rows.length };
 }
 
+function childFolder(parent, name) {
+  const folders = parent.getFoldersByName(name);
+  return folders.hasNext() ? folders.next() : parent.createFolder(name);
+}
+
+function moduleFolderName(reportGroup) {
+  const value = String(reportGroup || '').toLowerCase().replace(/\s/g, '');
+  if (value.indexOf('2-3') !== -1 || value.indexOf('2&3') !== -1 || value.indexOf('23') !== -1) return 'Module 2&3';
+  if (value.indexOf('4-5') !== -1 || value.indexOf('4&5') !== -1 || value.indexOf('45') !== -1) return 'Module 4&5';
+  const moduleNumber = value.match(/(?:module|modul|m)?[-_]?([678])(?:$|\D)/);
+  return moduleNumber ? 'Module ' + moduleNumber[1] : 'Other';
+}
+
+function reportFolder(config, data) {
+  const root = DriveApp.getFolderById(config.folderId);
+  const week = Math.max(1, Number(data.weekNumber) || 1);
+  const weekFolder = childFolder(root, 'Week ' + String(week).padStart(2, '0'));
+  const trackFolder = childFolder(weekFolder, String(data.track || 'RL').toUpperCase());
+  return childFolder(trackFolder, moduleFolderName(data.reportGroup));
+}
+
 function uploadReport(config, spreadsheet, data) {
   if (data.mimeType !== 'application/pdf') throw new Error('Only PDF files are accepted');
   const bytes = Utilities.base64Decode(data.base64);
   if (bytes.length > 20 * 1024 * 1024) throw new Error('The PDF must be smaller than 20 MB');
-  const folder = DriveApp.getFolderById(config.folderId);
+  const folder = reportFolder(config, data);
   const blob = Utilities.newBlob(bytes, data.mimeType, data.driveFileName);
   const file = folder.createFile(blob);
   appendSubmission(spreadsheet, data, file);
