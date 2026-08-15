@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, Clock3, Eye, Loader2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, Clock3, Eye, Loader2, MousePointer2 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from './AuthProvider';
 
 const PDFJS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
 const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-const IDLE_AFTER_MS = 45000;
-const FLUSH_EVERY_MS = 10000;
+const ACTIVE_WINDOW_MS = 60000;
+const FLUSH_EVERY_MS = 5000;
+const PAGE_QUALIFY_SECONDS = 5;
+const MIN_VISIBLE_RATIO = 0.5;
 
 function loadPdfJs() {
   if (typeof window === 'undefined') return Promise.reject(new Error('Browser required'));
@@ -55,13 +57,24 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
   const [sessionId, setSessionId] = useState(null);
   const pageRefs = useRef(new Map());
   const visiblePages = useRef(new Map());
-  const lastActivity = useRef(Date.now());
+  const lastMeaningfulActivity = useRef(Date.now());
   const latest = useRef({});
+  const flushRef = useRef(null);
 
   const completion = useMemo(() => pageCount ? clamp((pagesSeen.length / pageCount) * 100, 0, 100) : 0, [pageCount, pagesSeen]);
 
   useEffect(() => {
-    latest.current = { pageCount, activeSeconds, idleSeconds, focusLosses, pagesSeen, pageSeconds, maxScrollDepth, completion };
+    latest.current = {
+      pageCount,
+      activeSeconds,
+      idleSeconds,
+      focusLosses,
+      pagesSeen,
+      pageSeconds,
+      maxScrollDepth,
+      completion,
+      lastMeaningfulActivity: lastMeaningfulActivity.current
+    };
   }, [pageCount, activeSeconds, idleSeconds, focusLosses, pagesSeen, pageSeconds, maxScrollDepth, completion]);
 
   useEffect(() => {
@@ -138,12 +151,8 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         const page = Number(entry.target.dataset.page);
-        if (entry.isIntersecting) {
-          visiblePages.current.set(page, entry.intersectionRatio);
-          setPagesSeen((prev) => prev.includes(page) ? prev : [...prev, page].sort((a, b) => a - b));
-        } else {
-          visiblePages.current.delete(page);
-        }
+        if (entry.isIntersecting) visiblePages.current.set(page, entry.intersectionRatio);
+        else visiblePages.current.delete(page);
       });
       const top = [...visiblePages.current.entries()].sort((a, b) => b[1] - a[1])[0];
       if (top) setCurrentPage(top[0]);
@@ -153,24 +162,37 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
   }, [status, pageCount]);
 
   useEffect(() => {
-    const activity = () => { lastActivity.current = Date.now(); };
+    const meaningfulActivity = () => { lastMeaningfulActivity.current = Date.now(); };
     const scroll = () => {
-      activity();
+      meaningfulActivity();
       const root = document.documentElement;
       const scrollable = Math.max(1, root.scrollHeight - window.innerHeight);
       const depth = clamp((window.scrollY / scrollable) * 100, 0, 100);
       setMaxScrollDepth((prev) => Math.max(prev, depth));
     };
-    const visibility = () => {
-      if (document.hidden) setFocusLosses((value) => value + 1);
-      else activity();
+    const keydown = (event) => {
+      if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' '].includes(event.key)) meaningfulActivity();
     };
-    ['mousemove', 'mousedown', 'keydown', 'touchstart'].forEach((eventName) => window.addEventListener(eventName, activity, { passive: true }));
+    const visibility = () => {
+      if (document.hidden) {
+        setFocusLosses((value) => value + 1);
+        flushRef.current?.(false);
+      } else {
+        meaningfulActivity();
+      }
+    };
     window.addEventListener('scroll', scroll, { passive: true });
+    window.addEventListener('wheel', meaningfulActivity, { passive: true });
+    window.addEventListener('touchstart', meaningfulActivity, { passive: true });
+    window.addEventListener('touchmove', meaningfulActivity, { passive: true });
+    window.addEventListener('keydown', keydown);
     document.addEventListener('visibilitychange', visibility);
     return () => {
-      ['mousemove', 'mousedown', 'keydown', 'touchstart'].forEach((eventName) => window.removeEventListener(eventName, activity));
       window.removeEventListener('scroll', scroll);
+      window.removeEventListener('wheel', meaningfulActivity);
+      window.removeEventListener('touchstart', meaningfulActivity);
+      window.removeEventListener('touchmove', meaningfulActivity);
+      window.removeEventListener('keydown', keydown);
       document.removeEventListener('visibilitychange', visibility);
     };
   }, []);
@@ -178,11 +200,23 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
   useEffect(() => {
     if (status !== 'ready') return;
     const timer = window.setInterval(() => {
-      const active = !document.hidden && Date.now() - lastActivity.current < IDLE_AFTER_MS;
-      if (active) {
+      const top = [...visiblePages.current.entries()].sort((a, b) => b[1] - a[1])[0];
+      const visibleEnough = Boolean(top && top[1] >= MIN_VISIBLE_RATIO);
+      const recentlyInteracted = Date.now() - lastMeaningfulActivity.current < ACTIVE_WINDOW_MS;
+      const qualifies = !document.hidden && visibleEnough && recentlyInteracted;
+
+      if (qualifies) {
         setActiveSeconds((value) => value + 1);
-        const top = [...visiblePages.current.entries()].sort((a, b) => b[1] - a[1])[0];
-        if (top) setPageSeconds((prev) => ({ ...prev, [top[0]]: Number(prev[top[0]] || 0) + 1 }));
+        if (top) {
+          const page = top[0];
+          setPageSeconds((prev) => {
+            const nextSeconds = Number(prev[page] || 0) + 1;
+            if (nextSeconds >= PAGE_QUALIFY_SECONDS) {
+              setPagesSeen((seen) => seen.includes(page) ? seen : [...seen, page].sort((a, b) => a - b));
+            }
+            return { ...prev, [page]: nextSeconds };
+          });
+        }
       } else {
         setIdleSeconds((value) => value + 1);
       }
@@ -196,7 +230,7 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
       const data = latest.current;
       await supabase.from('reading_sessions').update({
         total_pages: data.pageCount || 0,
-        last_seen_at: new Date().toISOString(),
+        last_seen_at: new Date(data.lastMeaningfulActivity || Date.now()).toISOString(),
         ended_at: ended ? new Date().toISOString() : null,
         active_seconds: data.activeSeconds || 0,
         idle_seconds: data.idleSeconds || 0,
@@ -208,12 +242,14 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
         updated_at: new Date().toISOString()
       }).eq('id', sessionId);
     };
+    flushRef.current = flush;
     const timer = window.setInterval(() => flush(false), FLUSH_EVERY_MS);
-    const beforeUnload = () => { flush(true); };
-    window.addEventListener('pagehide', beforeUnload);
+    const pageHide = () => { flush(true); };
+    window.addEventListener('pagehide', pageHide);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener('pagehide', beforeUnload);
+      window.removeEventListener('pagehide', pageHide);
+      flushRef.current = null;
       flush(true);
     };
   }, [sessionId, supabase]);
@@ -223,20 +259,27 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
   if (status === 'error' || status === 'blocked') return <section className="section reader-state"><h1>Viewer unavailable.</h1><p>{error}</p><Link className="btn ghost" href="/practicum">Back to practicum</Link></section>;
 
   return <section className="section tracked-reader-page">
-    <div className="reader-toolbar liquid">
-      <div className="reader-heading"><Link className="reader-back" href={`/practicum/${track}`}><ArrowLeft size={18}/> Back</Link><div><div className="eyebrow">Tracked module reader</div><h1>{title || `${track.toUpperCase()} Module ${moduleNumber}`}</h1><p>TTPL records page coverage, active time, dwell time, scroll progress, and focus/idle behavior. These metrics do not prove comprehension.</p></div></div>
-      <div className="reader-metrics">
-        <div><Eye size={16}/><span>Pages seen</span><b>{pagesSeen.length}/{pageCount || '–'}</b></div>
-        <div><Clock3 size={16}/><span>Active time</span><b>{formatTime(activeSeconds)}</b></div>
-        <div><BookOpen size={16}/><span>Coverage</span><b>{Math.round(completion)}%</b></div>
-      </div>
-      <div className="reader-progress"><span style={{ width: `${completion}%` }}/></div>
-      <small>Current page {currentPage} · max scroll depth {Math.round(maxScrollDepth)}% · focus changes {focusLosses}</small>
-    </div>
+    <div className="reader-layout">
+      <aside className="reader-toolbar liquid">
+        <Link className="reader-back" href={`/practicum/${track}`}><ArrowLeft size={17}/> Back</Link>
+        <div className="reader-title"><div className="eyebrow">Tracked reader</div><h1>{title || `${track.toUpperCase()} Module ${moduleNumber}`}</h1></div>
+        <div className="reader-metrics">
+          <div><Eye size={16}/><span>Qualified pages</span><b>{pagesSeen.length}/{pageCount || '–'}</b></div>
+          <div><Clock3 size={16}/><span>Active reading</span><b>{formatTime(activeSeconds)}</b></div>
+          <div><BookOpen size={16}/><span>Coverage</span><b>{Math.round(completion)}%</b></div>
+          <div><MousePointer2 size={16}/><span>Current page</span><b>{currentPage}</b></div>
+        </div>
+        <div className="reader-progress"><span style={{ width: `${completion}%` }}/></div>
+        <small>Scroll depth {Math.round(maxScrollDepth)}%<br/>Focus changes {focusLosses}</small>
+        <p className="reader-note">Time counts only while a page is substantially visible and you have interacted with the document recently. A page needs several seconds of qualified dwell before it counts as seen.</p>
+      </aside>
 
-    {status === 'loading' && <div className="reader-loading"><Loader2 className="spin"/><p>Opening PDF...</p></div>}
-    <div className="tracked-pdf-stack">
-      {Array.from({ length: pageCount }, (_, index) => index + 1).map((page) => <article className="tracked-pdf-page" data-page={page} key={page} ref={(element) => { if (element) pageRefs.current.set(page, element); else pageRefs.current.delete(page); }}><div className="pdf-page-placeholder">Page {page}</div></article>)}
+      <main className="reader-document">
+        {status === 'loading' && <div className="reader-loading"><Loader2 className="spin"/><p>Opening PDF...</p></div>}
+        <div className="tracked-pdf-stack">
+          {Array.from({ length: pageCount }, (_, index) => index + 1).map((page) => <article className="tracked-pdf-page" data-page={page} key={page} ref={(element) => { if (element) pageRefs.current.set(page, element); else pageRefs.current.delete(page); }}><div className="pdf-page-placeholder">Page {page}</div></article>)}
+        </div>
+      </main>
     </div>
   </section>;
 }
