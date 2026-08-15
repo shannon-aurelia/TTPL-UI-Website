@@ -2348,3 +2348,68 @@ html[data-theme="light"] .auth-card .btn.ghost {
   border-color: #31596e !important;
   color: #061525 !important;
 }
+
+
+/* Admin batch attendance */
+.auth-text-button {
+  border: 0;
+  background: transparent;
+  color: var(--mint);
+  font: inherit;
+  font-weight: 800;
+  padding: 4px 0;
+  cursor: pointer;
+  text-align: left;
+}
+.batch-attendance { display: grid; gap: 24px; }
+.batch-heading { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.batch-heading h2 { margin: 0 0 4px; }
+.batch-heading p { margin: 0; color: var(--muted); }
+.batch-session-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+.batch-session-grid label, .score-field, .batch-notes { display: grid; gap: 7px; font-weight: 800; color: var(--soft); }
+.batch-session-grid input, .batch-session-grid select, .student-picker-search, .score-field input, .batch-notes input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 13px;
+  background: rgba(2,18,29,.72);
+  color: var(--fg);
+  font: inherit;
+}
+.batch-student-list { display: grid; gap: 10px; max-height: 520px; overflow: auto; padding-right: 4px; }
+.batch-student-row {
+  display: grid;
+  grid-template-columns: minmax(220px,1fr) 150px minmax(180px,.8fr);
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255,255,255,.055);
+}
+.student-check { display: flex; gap: 11px; align-items: center; font-weight: 800; }
+.student-check input { width: 20px; height: 20px; accent-color: var(--mint); }
+.student-check small { display: block; color: var(--muted); font-weight: 600; }
+.batch-save { justify-self: start; min-width: 190px; justify-content: center; cursor: pointer; }
+.batch-save:disabled { opacity: .55; cursor: wait; }
+
+html[data-theme="light"] .batch-session-grid input,
+html[data-theme="light"] .batch-session-grid select,
+html[data-theme="light"] .student-picker-search,
+html[data-theme="light"] .score-field input,
+html[data-theme="light"] .batch-notes input {
+  background: #fff;
+  border-color: #31596e;
+  color: #061525;
+}
+html[data-theme="light"] .batch-student-row { background: rgba(255,255,255,.76); border-color: rgba(22,72,94,.28); }
+html[data-theme="light"] .auth-text-button { color: #005a55; }
+
+@media (max-width: 800px) {
+  .batch-session-grid { grid-template-columns: 1fr 1fr; }
+  .batch-student-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .batch-session-grid { grid-template-columns: 1fr; }
+}
