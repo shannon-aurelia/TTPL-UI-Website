@@ -2,11 +2,11 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpenCheck, CalendarCheck, Download, ExternalLink, LogOut, RefreshCw, Search, UserRoundX, Users } from 'lucide-react';
+import { BookOpenCheck, CalendarCheck, Download, ExternalLink, LogOut, RefreshCw, Search, Trash2, UserRoundX, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../components/AuthProvider';
 
-const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1A05innQy6PZJ7L0KxctYWIfMjBD-peNOzUAOghv65ZA/edit';
+const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1NqCyRfXKIotsbx019oP1RBer3aj3EPSTQRLes__i_nc/edit';
 
 function jakartaParts() {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -75,6 +75,7 @@ export default function AdminPage() {
   });
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [deleting, setDeleting] = useState('');
   const router = useRouter();
   const isStaff = profile?.role === 'assistant' || profile?.role === 'admin';
 
@@ -102,6 +103,20 @@ export default function AdminPage() {
   }, [loading, user, profile, router]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!supabase || !isStaff) return undefined;
+    const syncInBackground = async () => {
+      const { data } = await supabase.auth.getSession();
+      const response = await fetch('/api/sync-attendance', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${data.session?.access_token || ''}` }
+      });
+      if (response.ok) load();
+    };
+    const timer = window.setInterval(syncInBackground, 30000);
+    return () => window.clearInterval(timer);
+  }, [supabase, isStaff, load]);
 
   const students = useMemo(() => profiles.filter((item) => item.role === 'student'), [profiles]);
   const studentChoices = useMemo(() => {
@@ -137,6 +152,7 @@ export default function AdminPage() {
     const moduleNumber = Number(attendance.module.split('&')[0]);
     const attendedAt = new Date(`${attendance.attended_date}T${attendance.attended_time}:00+07:00`).toISOString();
     const entries = Object.values(selected).map(({ student, score }) => ({
+      source_row_key: `web-${student.id}-${attendance.track}-${attendance.module}-${attendance.attended_date}-${attendance.attended_time}`,
       student_id: student.id,
       track: attendance.track,
       module_number: moduleNumber,
@@ -147,13 +163,12 @@ export default function AdminPage() {
       notes: attendance.notes
     }));
     const { data, error } = await supabase.rpc('staff_record_attendance_batch', { entries });
-    let sheetError = '';
     if (!error) {
       const { data: sessionData } = await supabase.auth.getSession();
       const sheetEntries = entries.map((entry) => {
         const student = selected[entry.student_id].student;
         return {
-          sourceKey: `web-${entry.student_id}-${attendance.track}-${attendance.module}-${attendance.attended_date}-${attendance.attended_time}`,
+          sourceKey: entry.source_row_key,
           npm: student.npm || '',
           fullName: student.full_name,
           track: attendance.track,
@@ -168,24 +183,21 @@ export default function AdminPage() {
           assistantCode: ''
         };
       });
-      const sheetResponse = await fetch('/api/attendance', {
+      fetch('/api/attendance', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${sessionData.session?.access_token || ''}`
         },
         body: JSON.stringify({ entries: sheetEntries })
+      }).then(async (response) => {
+        if (!response.ok) throw new Error((await response.json()).error || 'Sheet update failed');
+        setMessage(`${data || selectedCount} students saved. Google Sheet is updated too.`);
+      }).catch((sheetError) => {
+        setMessage(`${data || selectedCount} students saved to the portal. Sheet retry needed: ${sheetError.message}`);
       });
-      if (!sheetResponse.ok) {
-        const sheetResult = await sheetResponse.json();
-        sheetError = sheetResult.error || 'Sheet update failed';
-      }
     }
-    setMessage(error
-      ? error.message
-      : sheetError
-        ? `${data || selectedCount} students saved to the portal, but the Sheet could not update: ${sheetError}`
-        : `${data || selectedCount} students saved to the portal and Google Sheet. Deadlines were created for tomorrow at 23:59 WIB.`);
+    setMessage(error ? error.message : `${data || selectedCount} students saved. The Sheet is updating in the background.`);
     if (!error) {
       setSelected({});
       await load();
@@ -207,6 +219,36 @@ export default function AdminPage() {
     const { error } = await supabase.rpc('admin_set_profile_role', { target_id: profileId, new_role: role });
     setMessage(error ? error.message : 'Account role updated.');
     if (!error) load();
+  };
+
+  const deleteAttendance = async (session) => {
+    if (!confirm(`Delete this QnA record for ${session.profiles?.full_name || 'this student'}?`)) return;
+    setDeleting(session.id);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const sheetResponse = await fetch('/api/attendance', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token || ''}` },
+      body: JSON.stringify({ sourceKeys: [session.source_row_key] })
+    });
+    if (!sheetResponse.ok) {
+      const result = await sheetResponse.json();
+      setMessage(result.error || 'The Sheet row could not be deleted.');
+      setDeleting('');
+      return;
+    }
+    const { error } = await supabase.from('practicum_sessions').delete().eq('id', session.id);
+    setMessage(error ? error.message : 'QnA record deleted from the website and Google Sheet.');
+    if (!error) await load();
+    setDeleting('');
+  };
+
+  const deleteStudent = async (student) => {
+    if (!confirm(`Permanently delete ${student.full_name || student.email} and all of their practicum data?`)) return;
+    setDeleting(student.id);
+    const { error } = await supabase.rpc('admin_delete_student_account', { target_id: student.id });
+    setMessage(error ? error.message : 'Student account and practicum records deleted.');
+    if (!error) await load();
+    setDeleting('');
   };
 
   const updateDeadline = async (sessionId, value) => {
@@ -308,7 +350,7 @@ export default function AdminPage() {
         <button className="btn batch-save" type="submit" disabled={saving || !selectedCount}>{saving ? 'Saving attendance...' : `Save ${selectedCount || ''} students`}</button>
       </form>
 
-      <div className="card table-card"><div className="table-scroll"><table className="dashboard-table"><thead><tr><th>Student</th><th>Attendance</th><th>Module</th><th>QnA</th><th>Deadline</th><th>Submission</th></tr></thead><tbody>{filteredSessions.map((session) => <tr key={session.id}><td><b>{session.profiles?.full_name}</b><small>{session.profiles?.npm}</small></td><td>{displayDate(session.attended_at || session.scheduled_at)}<small>{session.is_makeup ? 'Makeup session' : `Week ${session.week_number}`}</small></td><td><b>{session.track.toUpperCase()} M{moduleLabel(session)}</b><small>{session.report_label}</small></td><td>{session.qna_score ?? 'Not entered'}</td><td><input type="datetime-local" defaultValue={localInputValue(session.deadline_at)} onBlur={(event) => event.target.value && updateDeadline(session.id, event.target.value)}/><small>{session.deadline_override_reason || 'Automatic: next day 23:59 WIB'}</small></td><td><span className={`attendance-badge ${session.submission_open ? 'on_time' : 'absent'}`}>{session.submission_open ? 'Open' : 'Closed'}</span></td></tr>)}</tbody></table></div></div>
+      <div className="card table-card"><div className="table-scroll"><table className="dashboard-table"><thead><tr><th>Student</th><th>Attendance</th><th>Module</th><th>QnA</th><th>Deadline</th><th>Submission</th><th>Delete</th></tr></thead><tbody>{filteredSessions.map((session) => <tr key={session.id}><td><b>{session.profiles?.full_name}</b><small>{session.profiles?.npm}</small></td><td>{displayDate(session.attended_at || session.scheduled_at)}<small>{session.is_makeup ? 'Makeup session' : `Week ${session.week_number}`}</small></td><td><b>{session.track.toUpperCase()} M{moduleLabel(session)}</b><small>{session.report_label}</small></td><td>{session.qna_score ?? 'Not entered'}</td><td><input type="datetime-local" defaultValue={localInputValue(session.deadline_at)} onBlur={(event) => event.target.value && updateDeadline(session.id, event.target.value)}/><small>{session.deadline_override_reason || 'Automatic: next day 23:59 WIB'}</small></td><td><span className={`attendance-badge ${session.submission_open ? 'on_time' : 'absent'}`}>{session.submission_open ? 'Open' : 'Closed'}</span></td><td><button className="danger-action" type="button" disabled={deleting === session.id} onClick={() => deleteAttendance(session)}><Trash2 size={16}/>{deleting === session.id ? 'Deleting...' : 'Delete'}</button></td></tr>)}</tbody></table></div></div>
     </>}
 
     {tab === 'missing' && <div className="card table-card"><div className="table-scroll"><table className="dashboard-table"><thead><tr><th>Student</th><th>Planned week</th><th>Expected module</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredPlans.map((plan) => <tr key={plan.id}><td><b>{plan.profiles?.full_name}</b><small>{plan.profiles?.npm}</small></td><td>{plan.planned_week_start}<small>Week {plan.week_number}</small></td><td><b>{plan.track.toUpperCase()} M{moduleLabel(plan)}</b><small>{plan.report_label}</small></td><td><span className="attendance-badge late">{plan.status}</span></td><td><button className="table-link" onClick={() => updatePlanStatus(plan.id, plan.status === 'deferred' ? 'expected' : 'deferred')}>{plan.status === 'deferred' ? 'Return to expected' : 'Mark force majeure'}</button></td></tr>)}</tbody></table></div></div>}
@@ -317,7 +359,7 @@ export default function AdminPage() {
 
     {tab === 'accounts' && profile.role === 'admin' && <>
       <div className="card registration-control"><div><h2>Student registration mode</h2><p className="muted">Keep external emails enabled while testing. Turn it off before the practicum opens to students.</p></div><button className="btn" onClick={toggleExternalRegistration}>{settings?.allow_external_student_registration ? 'Testing: Gmail allowed' : 'Production: UI email only'}</button></div>
-      <div className="card table-card"><div className="table-scroll"><table className="dashboard-table admin-account-table"><thead><tr><th>Name</th><th>NPM</th><th>Email</th><th>Access</th></tr></thead><tbody>{filteredProfiles.map((item) => <tr key={item.id}><td><b>{item.full_name}</b></td><td>{item.npm || 'Not set'}</td><td>{item.email}</td><td><select value={item.role} disabled={item.id === user.id} onChange={(event) => updateRole(item.id, event.target.value)}><option value="student">Student</option><option value="assistant">Assistant</option><option value="admin">Administrator</option></select>{item.id === user.id && <small>Your account</small>}</td></tr>)}</tbody></table></div></div>
+      <div className="card table-card"><div className="table-scroll"><table className="dashboard-table admin-account-table"><thead><tr><th>Name</th><th>NPM</th><th>Email</th><th>Access</th><th>Delete</th></tr></thead><tbody>{filteredProfiles.map((item) => <tr key={item.id}><td><b>{item.full_name}</b></td><td>{item.npm || 'Not set'}</td><td>{item.email}</td><td><select value={item.role} disabled={item.id === user.id} onChange={(event) => updateRole(item.id, event.target.value)}><option value="student">Student</option><option value="assistant">Assistant</option><option value="admin">Administrator</option></select>{item.id === user.id && <small>Your account</small>}</td><td>{item.role === 'student' ? <button className="danger-action" type="button" disabled={deleting === item.id} onClick={() => deleteStudent(item)}><Trash2 size={16}/>{deleting === item.id ? 'Deleting...' : 'Delete student'}</button> : <small>Staff protected</small>}</td></tr>)}</tbody></table></div></div>
     </>}
   </section>;
 }
