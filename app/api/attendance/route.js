@@ -38,3 +38,22 @@ export async function POST(request) {
   }
   return NextResponse.json(result.data);
 }
+
+export async function DELETE(request) {
+  if (!await authorizeStaff(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const url = process.env.GOOGLE_APPS_SCRIPT_WEB_APP_URL;
+  const secret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
+  if (!url || !secret) return NextResponse.json({ error: 'Google Sheet bridge is not configured' }, { status: 503 });
+  const body = await request.json();
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'deleteAttendance', secret, data: body.sourceKeys || [] }),
+    cache: 'no-store'
+  });
+  const result = await response.json();
+  if (!response.ok || result.error) return NextResponse.json({ error: result.error || 'Sheet delete failed' }, { status: 502 });
+  return NextResponse.json(result.data);
+}
