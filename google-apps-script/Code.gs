@@ -7,7 +7,9 @@ function getConfig() {
   return {
     secret: properties.getProperty('TTPL_SECRET'),
     folderId: properties.getProperty('REPORT_FOLDER_ID'),
-    spreadsheetId: properties.getProperty('CONTROL_SHEET_ID')
+    spreadsheetId: properties.getProperty('CONTROL_SHEET_ID'),
+    websiteSyncUrl: properties.getProperty('WEBSITE_SYNC_URL'),
+    websiteSyncSecret: properties.getProperty('WEBSITE_SYNC_SECRET')
   };
 }
 
@@ -51,8 +53,12 @@ function appendSubmission(spreadsheet, data, file) {
 function appendAttendance(spreadsheet, data) {
   const sheet = spreadsheet.getSheetByName('QnA Attendance');
   const rows = Array.isArray(data) ? data : [data];
+  const lastRow = sheet.getLastRow();
+  const sourceKeys = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues() : [];
+  const rowByKey = {};
+  sourceKeys.forEach(function (value, index) { rowByKey[String(value[0])] = index + 2; });
+  const newRows = [];
   rows.forEach(function (entry) {
-    const existing = sheet.createTextFinder(entry.sourceKey).matchEntireCell(true).findNext();
     const values = [
       entry.sourceKey,
       entry.npm || '',
@@ -72,13 +78,47 @@ function appendAttendance(spreadsheet, data) {
       entry.assistantCode || '',
       false
     ];
-    if (existing) {
-      sheet.getRange(existing.getRow(), 1, 1, values.length).setValues([values]);
+    if (rowByKey[String(entry.sourceKey)]) {
+      sheet.getRange(rowByKey[String(entry.sourceKey)], 1, 1, values.length).setValues([values]);
     } else {
-      sheet.appendRow(values);
+      newRows.push(values);
     }
   });
+  if (newRows.length) sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
   return { saved: rows.length };
+}
+
+function deleteAttendance(spreadsheet, sourceKeys) {
+  const sheet = spreadsheet.getSheetByName('QnA Attendance');
+  const wanted = {};
+  (Array.isArray(sourceKeys) ? sourceKeys : [sourceKeys]).forEach(function (key) { wanted[String(key)] = true; });
+  let deleted = 0;
+  for (let row = sheet.getLastRow(); row >= 2; row -= 1) {
+    if (wanted[String(sheet.getRange(row, 1).getDisplayValue())]) {
+      sheet.deleteRow(row);
+      deleted += 1;
+    }
+  }
+  return { deleted: deleted };
+}
+
+function syncWebsiteFromSheet(event) {
+  if (event && event.range && event.range.getSheet().getName() !== 'QnA Attendance' && event.range.getSheet().getName() !== 'Module Plans') return;
+  const config = getConfig();
+  if (!config.websiteSyncUrl || !config.websiteSyncSecret) return;
+  UrlFetchApp.fetch(config.websiteSyncUrl, {
+    method: 'post',
+    headers: { 'x-sync-secret': config.websiteSyncSecret },
+    muteHttpExceptions: true
+  });
+}
+
+function installWebsiteSyncTrigger() {
+  const config = getConfig();
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === 'syncWebsiteFromSheet') ScriptApp.deleteTrigger(trigger);
+  });
+  ScriptApp.newTrigger('syncWebsiteFromSheet').forSpreadsheet(config.spreadsheetId).onEdit().create();
 }
 
 function childFolder(parent, name) {
@@ -122,6 +162,7 @@ function doPost(event) {
     if (body.action === 'attendanceRows') return jsonResponse({ rows: sheetRows(spreadsheet, 'QnA Attendance') });
     if (body.action === 'modulePlanRows') return jsonResponse({ rows: sheetRows(spreadsheet, 'Module Plans') });
     if (body.action === 'appendAttendance') return jsonResponse({ data: appendAttendance(spreadsheet, body.data) });
+    if (body.action === 'deleteAttendance') return jsonResponse({ data: deleteAttendance(spreadsheet, body.data) });
     if (body.action === 'uploadReport') return jsonResponse({ data: uploadReport(config, spreadsheet, body.data) });
     return jsonResponse({ error: 'Unknown action' });
   } catch (error) {
