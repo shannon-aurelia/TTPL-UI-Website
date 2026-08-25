@@ -121,9 +121,16 @@ export async function POST(request) {
     results.push({ source_key: payload.source_row_key, status: error ? 'plan_error' : 'plan_synced', error: error?.message });
   }
 
+  const attendanceNpms = [...new Set(records.map((record) => record.npm).filter(Boolean))];
+  const { data: attendanceProfiles } = attendanceNpms.length
+    ? await supabase.from('profiles').select('id,npm').in('npm', attendanceNpms)
+    : { data: [] };
+  const profileByNpm = new Map((attendanceProfiles || []).map((item) => [item.npm, item.id]));
+  const attendancePayloads = [];
+
   for (const record of records) {
-    const { data: profile } = await supabase.from('profiles').select('id').eq('npm', record.npm).maybeSingle();
-    if (!profile) { results.push({ source_key: record.source_key, status: 'student_not_found', npm: record.npm }); continue; }
+    const studentId = profileByNpm.get(record.npm);
+    if (!studentId) { results.push({ source_key: record.source_key, status: 'student_not_found', npm: record.npm }); continue; }
     const track = record.track.toLowerCase();
     const moduleNumber = parseModuleNumber(record.module_number);
     const group = reportGroupFor(track, moduleNumber);
@@ -135,7 +142,7 @@ export async function POST(request) {
     const sourceKey = record.source_key || `attendance-${record.npm}-${record.attended_date}-${track}-${moduleNumber}`;
     const payload = {
       source_row_key: sourceKey,
-      student_id: profile.id,
+      student_id: studentId,
       week_number: Number(record.week_number),
       track,
       module_number: moduleNumber,
@@ -152,11 +159,26 @@ export async function POST(request) {
       notes: record.notes || null,
       sheet_updated_at: new Date().toISOString()
     };
-    const { data: syncedSession, error } = await supabase.from('practicum_sessions').upsert(payload, { onConflict: 'source_row_key' }).select('id').single();
-    if (!error && syncedSession) {
-      await supabase.from('student_module_plans').update({ status: 'completed', completed_session_id: syncedSession.id }).eq('student_id', profile.id).eq('track', track).eq('report_group', payload.report_group).eq('week_number', payload.week_number);
+    attendancePayloads.push(payload);
+  }
+
+  if (attendancePayloads.length) {
+    const { data: syncedSessions, error } = await supabase
+      .from('practicum_sessions')
+      .upsert(attendancePayloads, { onConflict: 'source_row_key' })
+      .select('id,source_row_key,student_id,track,report_group,week_number');
+    if (error) {
+      attendancePayloads.forEach((payload) => results.push({ source_key: payload.source_row_key, status: 'error', error: error.message }));
+    } else {
+      (syncedSessions || []).forEach((session) => results.push({ source_key: session.source_row_key, status: 'synced' }));
+      await Promise.all((syncedSessions || []).map((session) => supabase
+        .from('student_module_plans')
+        .update({ status: 'completed', completed_session_id: session.id })
+        .eq('student_id', session.student_id)
+        .eq('track', session.track)
+        .eq('report_group', session.report_group)
+        .eq('week_number', session.week_number)));
     }
-    results.push({ source_key: sourceKey, status: error ? 'error' : 'synced', error: error?.message });
   }
   await supabase.from('sheet_sync_runs').insert({ row_count: records.length + planRecords.length, result: results });
   return NextResponse.json({
