@@ -224,21 +224,22 @@ export default function AdminPage() {
   const deleteAttendance = async (session) => {
     if (!confirm(`Delete this QnA record for ${session.profiles?.full_name || 'this student'}?`)) return;
     setDeleting(session.id);
-    const { data: sessionData } = await supabase.auth.getSession();
-    const sheetResponse = await fetch('/api/attendance', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token || ''}` },
-      body: JSON.stringify({ sourceKeys: [session.source_row_key] })
-    });
-    if (!sheetResponse.ok) {
-      const result = await sheetResponse.json();
-      setMessage(result.error || 'The Sheet row could not be deleted.');
+    const { error } = await supabase.from('practicum_sessions').delete().eq('id', session.id);
+    if (error) {
+      setMessage(error.message);
       setDeleting('');
       return;
     }
-    const { error } = await supabase.from('practicum_sessions').delete().eq('id', session.id);
-    setMessage(error ? error.message : 'QnA record deleted from the website and Google Sheet.');
-    if (!error) await load();
+    await load();
+    setMessage('QnA record deleted from the website. Google Sheet cleanup is running in the background.');
+    const { data: sessionData } = await supabase.auth.getSession();
+    fetch('/api/attendance', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token || ''}` },
+      body: JSON.stringify({ sourceKeys: [session.source_row_key] })
+    }).then((response) => {
+      if (response.ok) setMessage('QnA record deleted from the website and Google Sheet.');
+    }).catch(() => {});
     setDeleting('');
   };
 
