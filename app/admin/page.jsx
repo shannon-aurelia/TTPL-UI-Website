@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpenCheck, CalendarCheck, Download, ExternalLink, LogOut, RefreshCw, Search, Trash2, UserRoundX, Users } from 'lucide-react';
+import { BookOpenCheck, CalendarCheck, CalendarDays, Download, ExternalLink, GripVertical, LogOut, RefreshCw, Search, Trash2, UserRoundX, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../components/AuthProvider';
 
@@ -51,6 +51,19 @@ function moduleOptions(track) {
   return Array.from({ length: 8 }, (_, index) => [String(index + 1), String(index + 1)]);
 }
 
+function mondayOf(value) {
+  const date = new Date(`${value}T12:00:00+07:00`);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(value, amount) {
+  const date = new Date(`${value}T12:00:00+07:00`);
+  date.setDate(date.getDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
 export default function AdminPage() {
   const now = useMemo(() => jakartaParts(), []);
   const { user, profile, loading, configured, supabase } = useAuth();
@@ -62,6 +75,9 @@ export default function AdminPage() {
   const [tab, setTab] = useState('attendance');
   const [query, setQuery] = useState('');
   const [studentQuery, setStudentQuery] = useState('');
+  const [scheduleQuery, setScheduleQuery] = useState('');
+  const [scheduleWeek, setScheduleWeek] = useState(() => mondayOf(now.date));
+  const [scheduleModule, setScheduleModule] = useState('2&3');
   const [message, setMessage] = useState('');
   const [selected, setSelected] = useState({});
   const [attendance, setAttendance] = useState({
@@ -132,6 +148,13 @@ export default function AdminPage() {
   const filteredPlans = useMemo(() => missingPlans.filter((item) => `${item.profiles?.full_name || ''} ${item.profiles?.npm || ''} ${item.track} ${item.report_label}`.toLowerCase().includes(query.toLowerCase())), [missingPlans, query]);
   const filteredSubmissions = useMemo(() => submissions.filter((item) => `${item.profiles?.full_name || ''} ${item.profiles?.npm || ''} ${item.track} ${item.report_group}`.toLowerCase().includes(query.toLowerCase())), [submissions, query]);
   const selectedCount = Object.keys(selected).length;
+  const scheduleChoices = useMemo(() => {
+    const normalized = scheduleQuery.trim().toLowerCase();
+    if (normalized.length < 2) return [];
+    return students.filter((item) => `${item.full_name} ${item.npm || ''} ${item.email}`.toLowerCase().includes(normalized)).slice(0, 5);
+  }, [students, scheduleQuery]);
+  const scheduleDays = useMemo(() => Array.from({ length: 5 }, (_, index) => addDays(scheduleWeek, index)), [scheduleWeek]);
+  const scheduledThisWeek = useMemo(() => plans.filter((plan) => plan.track === 'rl' && plan.report_group === `rl-${scheduleModule.replace('&', '-')}` && scheduleDays.includes(plan.planned_lab_date)), [plans, scheduleDays, scheduleModule]);
 
   const toggleStudent = (student) => {
     setSelected((current) => {
@@ -162,10 +185,8 @@ export default function AdminPage() {
       is_makeup: attendance.is_makeup,
       notes: attendance.notes
     }));
-    const { data, error } = await supabase.rpc('staff_record_attendance_batch', { entries });
-    if (!error) {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const sheetEntries = entries.map((entry) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const sheetEntries = entries.map((entry) => {
         const student = selected[entry.student_id].student;
         return {
           sourceKey: entry.source_row_key,
@@ -183,23 +204,26 @@ export default function AdminPage() {
           assistantCode: ''
         };
       });
-      fetch('/api/attendance', {
+    const sheetResponse = await fetch('/api/attendance', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${sessionData.session?.access_token || ''}`
         },
         body: JSON.stringify({ entries: sheetEntries })
-      }).then(async (response) => {
-        if (!response.ok) throw new Error((await response.json()).error || 'Sheet update failed');
-        setMessage(`${data || selectedCount} students saved. Google Sheet is updated too.`);
-      }).catch((sheetError) => {
-        setMessage(`${data || selectedCount} students saved to the portal. Sheet retry needed: ${sheetError.message}`);
       });
+    const sheetResult = await sheetResponse.json();
+    if (!sheetResponse.ok) {
+      setMessage(`Nothing was saved. Google Sheet connection failed: ${sheetResult.error || 'unknown error'}`);
+      setSaving(false);
+      return;
     }
-    setMessage(error ? error.message : `${data || selectedCount} students saved. The Sheet is updating in the background.`);
+    const { data, error } = await supabase.rpc('staff_record_attendance_batch', { entries });
+    setMessage(error ? `The Sheet was saved, but the website needs a sync: ${error.message}` : `${data || selectedCount} students saved to the website and Google Sheet.`);
     if (!error) {
       setSelected({});
+      setStudentQuery('');
+      setQuery('');
       await load();
     }
     setSaving(false);
@@ -224,22 +248,22 @@ export default function AdminPage() {
   const deleteAttendance = async (session) => {
     if (!confirm(`Delete this QnA record for ${session.profiles?.full_name || 'this student'}?`)) return;
     setDeleting(session.id);
-    const { error } = await supabase.from('practicum_sessions').delete().eq('id', session.id);
-    if (error) {
-      setMessage(error.message);
-      setDeleting('');
-      return;
-    }
-    await load();
-    setMessage('QnA record deleted from the website. Google Sheet cleanup is running in the background.');
     const { data: sessionData } = await supabase.auth.getSession();
-    fetch('/api/attendance', {
+    const sheetResponse = await fetch('/api/attendance', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token || ''}` },
       body: JSON.stringify({ sourceKeys: [session.source_row_key] })
-    }).then((response) => {
-      if (response.ok) setMessage('QnA record deleted from the website and Google Sheet.');
-    }).catch(() => {});
+    });
+    const sheetResult = await sheetResponse.json();
+    if (!sheetResponse.ok) {
+      setMessage(`Nothing was deleted. Google Sheet connection failed: ${sheetResult.error || 'unknown error'}`);
+      setDeleting('');
+      return;
+    }
+    const { error } = await supabase.from('practicum_sessions').delete().eq('id', session.id);
+    if (error) setMessage(`The Sheet row was deleted. Website retry needed: ${error.message}`);
+    await load();
+    if (!error) setMessage('QnA record deleted from the website and Google Sheet.');
     setDeleting('');
   };
 
@@ -252,13 +276,60 @@ export default function AdminPage() {
     setDeleting('');
   };
 
-  const updateDeadline = async (sessionId, value) => {
-    const { error } = await supabase.from('practicum_sessions').update({
-      deadline_at: new Date(value).toISOString(),
+  const patchAttendance = async (session, changes, sheetChanges, successMessage) => {
+    const { data: auth } = await supabase.auth.getSession();
+    const response = await fetch('/api/attendance', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.session?.access_token || ''}` },
+      body: JSON.stringify({ entry: { sourceKey: session.source_row_key, ...sheetChanges } })
+    });
+    const result = await response.json();
+    if (!response.ok) { setMessage(`Nothing changed. Google Sheet connection failed: ${result.error || 'unknown error'}`); return; }
+    const { error } = await supabase.from('practicum_sessions').update({ ...changes, sheet_updated_at: new Date().toISOString() }).eq('id', session.id);
+    setMessage(error ? `The Sheet changed, but the website needs a sync: ${error.message}` : successMessage);
+    await load();
+  };
+
+  const updateDeadline = async (session, value) => {
+    const iso = new Date(value).toISOString();
+    await patchAttendance(session, {
+      deadline_at: iso,
       deadline_override_reason: 'Manual force majeure adjustment',
       deadline_updated_by: user.id
-    }).eq('id', sessionId);
-    setMessage(error ? error.message : 'Deadline updated.');
+    }, { deadlineOverride: value.replace('T', ' ') }, 'Deadline updated on the website and Sheet.');
+  };
+
+  const updateQna = async (session, value) => {
+    const score = value === '' ? null : Number(value);
+    if (score != null && (!Number.isFinite(score) || score < 0 || score > 100)) { setMessage('QnA score must be between 0 and 100.'); return; }
+    await patchAttendance(session, { qna_score: score }, { qnaScore: score }, 'QnA score updated on the website and Sheet.');
+  };
+
+  const toggleSubmissionAccess = async (session) => {
+    const next = !session.submission_open;
+    await patchAttendance(session, { submission_open: next }, { submissionOverride: next ? 'open' : 'closed' }, `Submission access ${next ? 'opened' : 'closed'} on the website and Sheet.`);
+  };
+
+  const saveSchedule = async (student, plannedDate) => {
+    const studentId = student.id || student.student_id;
+    const moduleNumber = Number(scheduleModule.split('&')[0]);
+    const reportGroup = `rl-${scheduleModule.replace('&', '-')}`;
+    const existing = plans.find((plan) => plan.student_id === studentId && plan.report_group === reportGroup && plan.planned_week_start === scheduleWeek);
+    const payload = {
+      source_row_key: existing?.source_row_key || `calendar-${studentId}-${reportGroup}-${scheduleWeek}`,
+      student_id: studentId, track: 'rl', week_number: Number(attendance.week_number), module_number: moduleNumber,
+      report_group: reportGroup, report_label: scheduleModule.includes('&') ? `Modules ${scheduleModule} Combined Report` : `Module ${scheduleModule} Report`,
+      planned_week_start: scheduleWeek, planned_lab_date: plannedDate, status: existing?.status || 'expected', updated_at: new Date().toISOString()
+    };
+    const request = existing ? supabase.from('student_module_plans').update(payload).eq('id', existing.id) : supabase.from('student_module_plans').insert(payload);
+    const { error } = await request;
+    setMessage(error ? error.message : `${student.full_name} scheduled for ${plannedDate}. This does not open submission access.`);
+    if (!error) { setScheduleQuery(''); await load(); }
+  };
+
+  const removeSchedule = async (plan) => {
+    const { error } = await supabase.from('student_module_plans').delete().eq('id', plan.id);
+    setMessage(error ? error.message : 'Planned date removed. Attendance and submission access were not changed.');
     if (!error) load();
   };
 
@@ -316,12 +387,13 @@ export default function AdminPage() {
 
     <div className="admin-tabs" role="tablist">
       <button className={tab === 'attendance' ? 'active' : ''} onClick={() => setTab('attendance')}>Today’s attendance</button>
+      <button className={tab === 'calendar' ? 'active' : ''} onClick={() => setTab('calendar')}>Planning calendar</button>
       <button className={tab === 'missing' ? 'active' : ''} onClick={() => setTab('missing')}>Missing students</button>
       <button className={tab === 'submissions' ? 'active' : ''} onClick={() => setTab('submissions')}>Submissions</button>
       {profile.role === 'admin' && <button className={tab === 'accounts' ? 'active' : ''} onClick={() => setTab('accounts')}>Accounts</button>}
     </div>
 
-    {tab !== 'attendance' && <div className="card dashboard-tools"><label><Search size={17}/><input placeholder="Search name, NPM, email, or report" value={query} onChange={(event) => setQuery(event.target.value)}/></label></div>}
+    {tab !== 'calendar' && <div className="card dashboard-tools"><label><Search size={17}/><input placeholder="Search name, NPM, email, or report" value={query} onChange={(event) => setQuery(event.target.value)}/></label></div>}
 
     {tab === 'attendance' && <>
       <form className="card batch-attendance" onSubmit={saveToday}>
@@ -332,7 +404,7 @@ export default function AdminPage() {
           <label>Week<input type="number" min="1" value={attendance.week_number} onChange={(event) => setAttendance({ ...attendance, week_number: event.target.value })}/></label>
           <label>Date<input type="date" value={attendance.attended_date} onChange={(event) => setAttendance({ ...attendance, attended_date: event.target.value })}/></label>
           <label>Time<input type="time" value={attendance.attended_time} onChange={(event) => setAttendance({ ...attendance, attended_time: event.target.value })}/></label>
-          <label className="admin-checkbox"><input type="checkbox" checked={attendance.is_makeup} onChange={(event) => setAttendance({ ...attendance, is_makeup: event.target.checked })}/> Makeup session</label>
+          <label className={`makeup-option ${attendance.is_makeup ? 'selected' : ''}`}><input type="checkbox" checked={attendance.is_makeup} onChange={(event) => setAttendance({ ...attendance, is_makeup: event.target.checked })}/><span><b>Makeup session</b><small>Use this when the student attends on a replacement day.</small></span></label>
         </div>
 
         <div className="batch-heading"><div><div className="eyebrow">Step 2</div><h2>Mark everyone who came</h2></div></div>
@@ -351,7 +423,17 @@ export default function AdminPage() {
         <button className="btn batch-save" type="submit" disabled={saving || !selectedCount}>{saving ? 'Saving attendance...' : `Save ${selectedCount || ''} students`}</button>
       </form>
 
-      <div className="card table-card"><div className="table-scroll"><table className="dashboard-table"><thead><tr><th>Student</th><th>Attendance</th><th>Module</th><th>QnA</th><th>Deadline</th><th>Submission</th><th>Delete</th></tr></thead><tbody>{filteredSessions.map((session) => <tr key={session.id}><td><b>{session.profiles?.full_name}</b><small>{session.profiles?.npm}</small></td><td>{displayDate(session.attended_at || session.scheduled_at)}<small>{session.is_makeup ? 'Makeup session' : `Week ${session.week_number}`}</small></td><td><b>{session.track.toUpperCase()} M{moduleLabel(session)}</b><small>{session.report_label}</small></td><td>{session.qna_score ?? 'Not entered'}</td><td><input type="datetime-local" defaultValue={localInputValue(session.deadline_at)} onBlur={(event) => event.target.value && updateDeadline(session.id, event.target.value)}/><small>{session.deadline_override_reason || 'Automatic: next day 23:59 WIB'}</small></td><td><span className={`attendance-badge ${session.submission_open ? 'on_time' : 'absent'}`}>{session.submission_open ? 'Open' : 'Closed'}</span></td><td><button className="danger-action" type="button" disabled={deleting === session.id} onClick={() => deleteAttendance(session)}><Trash2 size={16}/>{deleting === session.id ? 'Deleting...' : 'Delete'}</button></td></tr>)}</tbody></table></div></div>
+      <div className="card table-card"><div className="table-scroll"><table className="dashboard-table"><thead><tr><th>Student</th><th>Attendance</th><th>Module</th><th>QnA</th><th>Deadline</th><th>Submission</th><th>Delete</th></tr></thead><tbody>{filteredSessions.map((session) => <tr key={session.id}><td><b>{session.profiles?.full_name}</b><small>{session.profiles?.npm}</small></td><td>{displayDate(session.attended_at || session.scheduled_at)}<small>{session.is_makeup ? 'Makeup session' : `Week ${session.week_number}`}</small></td><td><b>{session.track.toUpperCase()} M{moduleLabel(session)}</b><small>{session.report_label}</small></td><td><input className="score-edit" type="number" min="0" max="100" step="0.01" defaultValue={session.qna_score ?? ''} placeholder="Not entered" onBlur={(event) => updateQna(session, event.target.value)}/><small>Click away to save</small></td><td><input type="datetime-local" defaultValue={localInputValue(session.deadline_at)} onBlur={(event) => event.target.value && updateDeadline(session, event.target.value)}/><small>{session.deadline_override_reason || 'Automatic: next day 23:59 WIB'}</small></td><td><button type="button" className={`access-toggle ${session.submission_open ? 'open' : ''}`} onClick={() => toggleSubmissionAccess(session)}>{session.submission_open ? 'Open' : 'Closed'}</button><small>Click to change access</small></td><td><button className="danger-action" type="button" disabled={deleting === session.id} onClick={() => deleteAttendance(session)}><Trash2 size={16}/>{deleting === session.id ? 'Deleting...' : 'Delete'}</button></td></tr>)}</tbody></table></div></div>
+    </>}
+
+    {tab === 'calendar' && <>
+      <div className="card calendar-controls">
+        <div><div className="eyebrow">Reference schedule only</div><h2>Planned lab calendar</h2><p className="muted">Moving a name changes the plan students see. It never opens a submission. Recorded attendance controls submission access and the next-day deadline.</p></div>
+        <label>Week starting<input type="date" value={scheduleWeek} onChange={(event) => setScheduleWeek(mondayOf(event.target.value))}/></label>
+        <label>RL module<select value={scheduleModule} onChange={(event) => setScheduleModule(event.target.value)}>{moduleOptions('rl').filter(([value]) => value !== '1').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      </div>
+      <div className="card schedule-add"><label><Search size={17}/><input placeholder="Find a student, then choose a day" value={scheduleQuery} onChange={(event) => setScheduleQuery(event.target.value)}/></label><div className="schedule-search-results">{scheduleChoices.map((student) => <div key={student.id}><b>{student.full_name}</b><span>{student.npm || student.email}</span>{scheduleDays.map((day) => <button key={day} type="button" onClick={() => saveSchedule(student, day)}>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short' })}</button>)}</div>)}</div></div>
+      <div className="planning-calendar">{scheduleDays.map((day) => <section className="card calendar-day" key={day} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const plan = plans.find((item) => item.id === event.dataTransfer.getData('text/plain')); if (plan) saveSchedule({ ...plan.profiles, student_id: plan.student_id }, day); }}><header><b>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' })}</b><span>{day}</span></header>{scheduledThisWeek.filter((plan) => plan.planned_lab_date === day).map((plan) => <div className="student-calendar-card" draggable onDragStart={(event) => event.dataTransfer.setData('text/plain', plan.id)} key={plan.id}><GripVertical size={15}/><span>{plan.profiles?.full_name}</span><button type="button" aria-label={`Remove ${plan.profiles?.full_name}`} onClick={() => removeSchedule(plan)}>×</button></div>)}</section>)}</div>
     </>}
 
     {tab === 'missing' && <div className="card table-card"><div className="table-scroll"><table className="dashboard-table"><thead><tr><th>Student</th><th>Planned week</th><th>Expected module</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredPlans.map((plan) => <tr key={plan.id}><td><b>{plan.profiles?.full_name}</b><small>{plan.profiles?.npm}</small></td><td>{plan.planned_week_start}<small>Week {plan.week_number}</small></td><td><b>{plan.track.toUpperCase()} M{moduleLabel(plan)}</b><small>{plan.report_label}</small></td><td><span className="attendance-badge late">{plan.status}</span></td><td><button className="table-link" onClick={() => updatePlanStatus(plan.id, plan.status === 'deferred' ? 'expected' : 'deferred')}>{plan.status === 'deferred' ? 'Return to expected' : 'Mark force majeure'}</button></td></tr>)}</tbody></table></div></div>}

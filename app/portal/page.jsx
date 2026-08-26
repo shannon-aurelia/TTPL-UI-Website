@@ -16,6 +16,7 @@ export default function Portal() {
   const { user, profile, loading, configured, supabase } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [plans, setPlans] = useState([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -27,14 +28,16 @@ export default function Portal() {
     if (!user || !supabase) return;
     Promise.all([
       supabase.from('practicum_sessions').select('*').eq('student_id', user.id).order('scheduled_at'),
-      supabase.from('submissions').select('*, submission_reviews(grade,feedback,grade_released)').eq('student_id', user.id).order('submitted_at', { ascending: false })
-    ]).then(([sessionResult, submissionResult]) => {
+      supabase.from('submissions').select('*, submission_reviews(grade,feedback,grade_released)').eq('student_id', user.id).order('submitted_at', { ascending: false }),
+      supabase.from('student_module_plans').select('*').eq('student_id', user.id).order('planned_lab_date')
+    ]).then(([sessionResult, submissionResult, planResult]) => {
       setSessions(sessionResult.data || []);
       setSubmissions(submissionResult.data || []);
+      setPlans(planResult.data || []);
     });
   }, [user, supabase]);
 
-  const upcoming = useMemo(() => sessions.filter((item) => new Date(item.scheduled_at) >= new Date()).slice(0, 4), [sessions]);
+  const upcoming = useMemo(() => plans.filter((item) => item.planned_lab_date && new Date(`${item.planned_lab_date}T23:59:00+07:00`) >= new Date()).slice(0, 4), [plans]);
   const active = useMemo(() => sessions.filter((item) => item.submission_open && !['absent', 'excused'].includes(item.attendance_status)), [sessions]);
   const completed = new Set(submissions.map((item) => item.session_id)).size;
 
@@ -53,13 +56,13 @@ export default function Portal() {
       <button className="btn ghost" onClick={logout}><LogOut size={17}/> Sign out</button>
     </div>
     <div className="dashboard-stats">
-      <div className="card metric-card"><CalendarDays/><span>Assigned sessions</span><b>{sessions.length}</b></div>
+      <div className="card metric-card"><CalendarDays/><span>Planned labs</span><b>{plans.length}</b></div>
       <div className="card metric-card"><Clock/><span>Open submissions</span><b>{active.length}</b></div>
       <div className="card metric-card"><CheckCircle/><span>Submitted</span><b>{completed}</b></div>
       <div className="card metric-card"><FileText/><span>Grades released</span><b>{submissions.filter((item) => item.submission_reviews?.grade_released).length}</b></div>
     </div>
     <div className="grid two dashboard-grid">
-      <div className="card"><div className="eyebrow">Next schedule</div><h2>Upcoming practicum</h2><div className="schedule-list">{upcoming.length === 0 && <p className="muted">No upcoming session has been imported.</p>}{upcoming.map((session) => <div className="schedule-item" key={session.id}><div><b>{session.track.toUpperCase()} · Module {session.module_number}</b><p>{displayDate(session.scheduled_at)}</p></div><span className={`attendance-badge ${session.attendance_status}`}>{session.attendance_status.replace('_', ' ')}</span></div>)}</div></div>
+      <div className="card"><div className="eyebrow">Reference schedule</div><h2>Upcoming practicum</h2><div className="schedule-list">{upcoming.length === 0 && <p className="muted">No planned date has been added yet.</p>}{upcoming.map((plan) => <div className="schedule-item" key={plan.id}><div><b>{plan.track.toUpperCase()} · {plan.report_label}</b><p>{new Date(`${plan.planned_lab_date}T12:00:00`).toLocaleDateString('en-GB', { dateStyle: 'full' })}</p></div><span className={`attendance-badge ${plan.status === 'deferred' ? 'late' : 'scheduled'}`}>{plan.status}</span></div>)}</div><p className="muted">This is a reminder only. If you miss it, contact an assistant to arrange a makeup session. Upload access starts only after your actual attendance is recorded.</p></div>
       <div className="card"><div className="eyebrow">Progress</div><h2>Current semester</h2><div className="progress-list">{sessions.map((session) => { const submission = submissions.find((item) => item.session_id === session.id); return <div className="progress-item" key={session.id}>{submission ? <CheckCircle size={18}/> : session.attendance_status === 'absent' || session.attendance_status === 'excused' ? <ShieldAlert size={18}/> : <Clock size={18}/>}<span>{session.track.toUpperCase()} · {session.report_label || session.report_group} · Week {session.week_number}</span><b>{submission ? 'Submitted' : session.attendance_status === 'absent' || session.attendance_status === 'excused' ? 'Awaiting makeup' : 'Pending'}</b></div>; })}</div><p className="muted">Grades stay hidden until an assistant marks them as released. A future spreadsheet grade sync can fill the same fields automatically.</p></div>
     </div>
     <ReportSubmissionPanel track="rl" />

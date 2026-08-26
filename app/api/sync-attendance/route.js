@@ -87,7 +87,8 @@ export async function POST(request) {
   if (!await authorizeStaff(request, supabaseUrl, anonKey)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   let records = await appsScriptRows('attendanceRows');
-  const planRecords = await appsScriptRows('modulePlanRows') || [];
+  records = (records || []).filter((record) => record.source_key && (record.npm || record.email));
+  const planRecords = (await appsScriptRows('modulePlanRows') || []).filter((record) => record.source_key && (record.npm || record.email));
   if (!records) {
     if (!sheetUrl) return NextResponse.json({ error: 'Google Sheet connection is not configured' }, { status: 500 });
     const response = await fetch(sheetUrl, { cache: 'no-store' });
@@ -114,6 +115,7 @@ export async function POST(request) {
       report_group: group?.id || `${track}-${moduleNumber}`,
       report_label: group?.title || `${track.toUpperCase()} Module ${moduleNumber}`,
       planned_week_start: record.planned_week_start,
+      planned_lab_date: record.planned_lab_date || null,
       status: record.status || 'expected',
       notes: record.notes || null
     };
@@ -155,8 +157,9 @@ export async function POST(request) {
       makeup_for_source_key: record.makeup_for_source_key || null,
       submission_open: Boolean(submissionOpen),
       deadline_at: deadlineAt,
-      qna_score: record.qna_score === '' || record.qna_score == null ? null : Number(record.qna_score),
+      qna_score: record.qna_score === '' || record.qna_score == null || !Number.isFinite(Number(record.qna_score)) ? null : Number(record.qna_score),
       notes: record.notes || null,
+      sync_managed: true,
       sheet_updated_at: new Date().toISOString()
     };
     attendancePayloads.push(payload);
@@ -180,6 +183,11 @@ export async function POST(request) {
         .eq('week_number', session.week_number)));
     }
   }
+  const sheetKeys = attendancePayloads.map((payload) => payload.source_row_key);
+  let deletionQuery = supabase.from('practicum_sessions').delete().eq('sync_managed', true);
+  if (sheetKeys.length) deletionQuery = deletionQuery.not('source_row_key', 'in', `(${sheetKeys.map((key) => `"${String(key).replaceAll('"', '')}"`).join(',')})`);
+  const { error: deleteError } = await deletionQuery;
+  if (deleteError) results.push({ status: 'delete_reconcile_error', error: deleteError.message });
   await supabase.from('sheet_sync_runs').insert({ row_count: records.length + planRecords.length, result: results });
   return NextResponse.json({
     attendanceSynced: results.filter((item) => item.status === 'synced').length,

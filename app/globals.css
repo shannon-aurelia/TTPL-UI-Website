@@ -2143,6 +2143,64 @@ html[data-theme="light"] .image-frame-overlay {
   width: auto;
 }
 
+.makeup-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 76px;
+  padding: 12px 14px;
+  border: 1px solid rgba(214,246,255,.17);
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.makeup-option.selected {
+  border-color: var(--mint);
+  background: rgba(91,255,205,.1);
+}
+
+.makeup-option input { width: auto; }
+.makeup-option span,.makeup-option small { display: block; }
+.makeup-option small { margin-top: 3px; color: var(--muted); font-weight: 600; }
+
+.score-edit { min-width: 105px; }
+
+.access-toggle {
+  border: 1px solid rgba(255,125,125,.35);
+  border-radius: 999px;
+  padding: 8px 13px;
+  background: rgba(255,94,94,.12);
+  color: #ffb6b6;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.access-toggle.open { border-color: rgba(91,255,205,.4); background: rgba(91,255,205,.12); color: var(--mint); }
+
+.calendar-controls {
+  display: grid;
+  grid-template-columns: 1fr 190px 220px;
+  align-items: end;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.calendar-controls h2 { margin: 7px 0; }
+.calendar-controls label { display: grid; gap: 7px; color: var(--muted); font-weight: 800; font-size: 13px; }
+.schedule-add { margin-bottom: 18px; }
+.schedule-add>label { display: flex; align-items: center; gap: 10px; }
+.schedule-add input { flex: 1; }
+.schedule-search-results>div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 0; border-top: 1px solid rgba(214,246,255,.1); }
+.schedule-search-results span { color: var(--muted); margin-right: auto; }
+.schedule-search-results button { border: 1px solid rgba(214,246,255,.17); border-radius: 10px; padding: 7px 9px; background: rgba(255,255,255,.06); color: var(--text); cursor: pointer; }
+.planning-calendar { display: grid; grid-template-columns: repeat(5,minmax(190px,1fr)); gap: 12px; overflow-x: auto; padding-bottom: 10px; }
+.calendar-day { padding: 14px; min-height: 300px; }
+.calendar-day header { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid rgba(214,246,255,.12); }
+.calendar-day header span { color: var(--muted); font-size: 12px; }
+.student-calendar-card { display: grid; grid-template-columns: auto 1fr auto; gap: 7px; align-items: center; margin-top: 9px; padding: 10px; border: 1px solid rgba(91,255,205,.25); border-radius: 11px; background: rgba(91,255,205,.08); cursor: grab; }
+.student-calendar-card span { font-weight: 750; font-size: 13px; }
+.student-calendar-card button { border: 0; background: transparent; color: var(--muted); font-size: 20px; cursor: pointer; }
+
 .review-controls textarea {
   min-height: 72px;
   resize: vertical;
@@ -2172,6 +2230,14 @@ html[data-theme="light"] .review-controls textarea {
   background: rgba(255,255,255,.62);
   color: #061525;
   border-color: rgba(8,82,112,.18);
+}
+
+html[data-theme="light"] .makeup-option,html[data-theme="light"] .calendar-day,html[data-theme="light"] .schedule-add { border-color: rgba(8,82,112,.17); }
+html[data-theme="light"] .access-toggle { color: #8e1f2b; }
+html[data-theme="light"] .access-toggle.open { color: #075b48; }
+
+@media (max-width: 850px) {
+  .calendar-controls { grid-template-columns: 1fr; }
 }
 
 @media (max-width:1050px) {

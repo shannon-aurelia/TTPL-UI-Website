@@ -16,7 +16,7 @@ async function authorizeStaff(request) {
   return profile?.role === 'assistant' || profile?.role === 'admin';
 }
 
-export async function POST(request) {
+async function writeAttendance(request) {
   if (!await authorizeStaff(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -26,10 +26,12 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Google Sheet bridge is not configured' }, { status: 503 });
   }
   const body = await request.json();
+  const entries = body.entries || (body.entry ? [body.entry] : []);
+  if (!entries.length) return NextResponse.json({ error: 'No attendance rows supplied' }, { status: 400 });
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'appendAttendance', secret, data: body.entries }),
+    body: JSON.stringify({ action: 'appendAttendance', secret, data: entries }),
     cache: 'no-store'
   });
   const result = await response.json();
@@ -37,6 +39,14 @@ export async function POST(request) {
     return NextResponse.json({ error: result.error || 'Sheet update failed' }, { status: 502 });
   }
   return NextResponse.json(result.data);
+}
+
+export async function POST(request) {
+  return writeAttendance(request);
+}
+
+export async function PATCH(request) {
+  return writeAttendance(request);
 }
 
 export async function DELETE(request) {

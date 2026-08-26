@@ -20,7 +20,7 @@ function sheetRows(spreadsheet, sheetName) {
   if (values.length < 2) return [];
   const headers = values[0].map(function (value) { return value.trim(); });
   return values.slice(1).filter(function (row) {
-    return row.some(function (value) { return String(value).trim() !== ''; });
+    return String(row[0] || '').trim() !== '';
   }).map(function (row) {
     const record = {};
     headers.forEach(function (header, index) { record[header] = String(row[index] || '').trim(); });
@@ -50,6 +50,29 @@ function appendSubmission(spreadsheet, data, file) {
   ]);
 }
 
+function attendanceValues(entry, existing) {
+  existing = existing || [];
+  return [
+    entry.sourceKey,
+    entry.npm == null ? existing[1] || '' : entry.npm,
+    entry.fullName == null ? existing[2] || '' : entry.fullName,
+    entry.track == null ? existing[3] || '' : entry.track,
+    entry.moduleLabel == null ? existing[4] || '' : entry.moduleLabel,
+    entry.weekNumber == null ? existing[5] || '' : entry.weekNumber,
+    entry.attendedDate == null ? existing[6] || '' : entry.attendedDate,
+    entry.attendedTime == null ? existing[7] || '' : entry.attendedTime,
+    entry.qnaScore == null || entry.qnaScore === '' ? '' : entry.qnaScore,
+    entry.attendanceStatus == null ? existing[9] || 'on_time' : entry.attendanceStatus,
+    entry.isMakeup == null ? String(existing[10]).toLowerCase() === 'true' : Boolean(entry.isMakeup),
+    entry.makeupForSourceKey == null ? existing[11] || '' : entry.makeupForSourceKey,
+    entry.deadlineOverride == null ? existing[12] || '' : entry.deadlineOverride,
+    entry.submissionOverride == null ? existing[13] || '' : entry.submissionOverride,
+    entry.notes == null ? existing[14] || '' : entry.notes,
+    entry.assistantCode == null ? existing[15] || '' : entry.assistantCode,
+    entry.gradeReleased == null ? String(existing[16]).toLowerCase() === 'true' : Boolean(entry.gradeReleased)
+  ];
+}
+
 function appendAttendance(spreadsheet, data) {
   const sheet = spreadsheet.getSheetByName('QnA Attendance');
   const rows = Array.isArray(data) ? data : [data];
@@ -59,27 +82,11 @@ function appendAttendance(spreadsheet, data) {
   sourceKeys.forEach(function (value, index) { rowByKey[String(value[0])] = index + 2; });
   const newRows = [];
   rows.forEach(function (entry) {
-    const values = [
-      entry.sourceKey,
-      entry.npm || '',
-      entry.fullName,
-      entry.track,
-      entry.moduleLabel,
-      entry.weekNumber,
-      entry.attendedDate,
-      entry.attendedTime,
-      entry.qnaScore === '' ? '' : entry.qnaScore,
-      entry.attendanceStatus || 'on_time',
-      Boolean(entry.isMakeup),
-      '',
-      '',
-      '',
-      entry.notes || '',
-      entry.assistantCode || '',
-      false
-    ];
-    if (rowByKey[String(entry.sourceKey)]) {
-      sheet.getRange(rowByKey[String(entry.sourceKey)], 1, 1, values.length).setValues([values]);
+    const targetRow = rowByKey[String(entry.sourceKey)];
+    const existing = targetRow ? sheet.getRange(targetRow, 1, 1, 17).getDisplayValues()[0] : [];
+    const values = attendanceValues(entry, existing);
+    if (targetRow) {
+      sheet.getRange(targetRow, 1, 1, values.length).setValues([values]);
     } else {
       newRows.push(values);
     }
