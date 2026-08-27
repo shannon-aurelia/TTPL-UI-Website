@@ -2603,7 +2603,7 @@ html[data-theme="light"] .nav-icon-button,html[data-theme="light"] .select-wrap 
 .home-kicker { display: flex; align-items: center; gap: 13px; color: #b7e4ed; font-size: 11px; letter-spacing: .25em; text-transform: uppercase; }
 .home-kicker span { width: 44px; height: 2px; background: var(--accent); box-shadow: 0 0 18px var(--accent); }
 .home-hero h1 { max-width: 1040px; margin: 28px 0 24px; font-size: clamp(50px, 7.3vw, 106px); line-height: .94; letter-spacing: -.058em; text-wrap: balance; }
-.voltage-i { display: inline-block; margin: 0 -.04em; color: #61ffd5; font-size: .75em; filter: drop-shadow(0 0 16px rgba(97,255,213,.8)); transform: translateY(-.05em); }
+.voltage-i { display: inline-block; width: .58em; height: .78em; margin: 0 -.03em; color: #61ffd5; fill: rgba(97,255,213,.18); stroke-width: 2.4; filter: drop-shadow(0 0 16px rgba(97,255,213,.8)); transform: translateY(.04em); }
 .home-hero-content>p { max-width: 650px; color: #c2d8df; font-size: clamp(17px, 1.65vw, 22px); line-height: 1.65; }
 .home-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
 .home-actions .btn { border-radius: 12px; }
