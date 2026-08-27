@@ -6,7 +6,7 @@ import { ArrowRight, BookOpenCheck, CalendarClock, Gauge, ShieldCheck, Sparkles,
 
 const text = {
   en: {
-    eyebrow: 'High voltage · measurement · power systems', titleA: 'Precision under', titleB: 'pressure.',
+    eyebrow: 'TTPL UI · Practicum 2026/2027', titleA: 'Surging W', titleB: 'th Voltage',
     lead: 'TTPL turns electrical theory into careful practice through circuits, instrumentation, measurement, and high-voltage safety.',
     practicum: 'Open practicum', portal: 'Student portal', lab: 'Explore virtual lab',
     season: 'Practicum 2026/2027', seasonText: 'One place for modules, tracked reading, schedules, attendance-based report access, and submission deadlines.',
@@ -22,7 +22,7 @@ const text = {
     updates: 'See laboratory updates', crew: 'Meet the team'
   },
   id: {
-    eyebrow: 'Tegangan tinggi · pengukuran · sistem tenaga', titleA: 'Presisi dalam', titleB: 'tekanan.',
+    eyebrow: 'TTPL UI · Praktikum 2026/2027', titleA: 'Surging W', titleB: 'th Voltage',
     lead: 'TTPL mengubah teori kelistrikan menjadi praktik yang teliti melalui rangkaian, instrumentasi, pengukuran, dan keselamatan tegangan tinggi.',
     practicum: 'Buka praktikum', portal: 'Portal mahasiswa', lab: 'Jelajahi lab virtual',
     season: 'Praktikum 2026/2027', seasonText: 'Satu tempat untuk modul, pelacakan membaca, jadwal, akses laporan berbasis kehadiran, dan deadline pengumpulan.',
@@ -38,7 +38,7 @@ const text = {
     updates: 'Lihat kegiatan laboratorium', crew: 'Kenali tim'
   },
   zh: {
-    eyebrow: '高电压 · 电测量 · 电力系统', titleA: '压力之下，', titleB: '保持精确。',
+    eyebrow: 'TTPL UI · 2026/2027 实验课', titleA: 'Surging W', titleB: 'th Voltage',
     lead: 'TTPL 通过电路、仪器、测量与高电压安全，把电气理论转化为严谨实践。',
     practicum: '进入实验课', portal: '学生入口', lab: '探索虚拟实验室',
     season: '2026/2027 实验课', seasonText: '模块、阅读记录、时间表、基于出勤的报告权限和提交截止日期集中在一个平台。',
@@ -78,7 +78,7 @@ export default function HomeClient({ current }) {
       <div className="home-hero-shade"/>
       <div className="home-hero-content">
         <div className="home-kicker"><span/><b>{t.eyebrow}</b></div>
-        <h1>{t.titleA}<br/><em>{t.titleB}</em></h1>
+        <h1 aria-label="Surging With Voltage">{t.titleA}<Zap className="voltage-i" aria-hidden="true"/>{t.titleB}</h1>
         <p>{t.lead}</p>
         <div className="home-actions">
           <Link className="btn" href="/practicum">{t.practicum}<ArrowRight size={18}/></Link>
@@ -91,7 +91,7 @@ export default function HomeClient({ current }) {
     </section>
 
     <section className="home-season section">
-      <div className="home-season-copy"><span className="section-index">01</span><div><div className="eyebrow">{t.season}</div><h2>{t.seasonText}</h2></div></div>
+      <div className="home-season-copy"><span className="section-index">01</span><div><div className="eyebrow">{t.season}</div><h2>Your practicum, clearly connected.</h2><p>{t.seasonText}</p></div></div>
       <div className="home-season-actions">
         <Link href="/practicum"><BookOpenCheck/><span><b>Modules</b><small>Tracked resources</small></span><ArrowRight/></Link>
         <Link href="/portal"><CalendarClock/><span><b>Schedule</b><small>Attendance & deadlines</small></span><ArrowRight/></Link>
