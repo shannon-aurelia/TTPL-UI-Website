@@ -78,7 +78,7 @@ export default function HomeClient({ current }) {
       <div className="home-hero-shade"/>
       <div className="home-hero-content">
         <div className="home-kicker"><span/><b>{t.eyebrow}</b></div>
-        <h1 aria-label="Surging With Voltage">{t.titleA}<span className="voltage-i" aria-hidden="true">⚡</span>{t.titleB}</h1>
+        <h1 aria-label="Surging With Voltage">{t.titleA}<Zap className="voltage-i" aria-hidden="true"/>{t.titleB}</h1>
         <p>{t.lead}</p>
         <div className="home-actions">
           <Link className="btn" href="/practicum">{t.practicum}<ArrowRight size={18}/></Link>
