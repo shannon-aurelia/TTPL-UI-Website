@@ -186,6 +186,16 @@ export default function AdminPage() {
       is_makeup: attendance.is_makeup,
       notes: attendance.notes
     }));
+    setSessions((current) => [...entries.map((entry) => ({
+      ...entry,
+      id: `saving-${entry.source_row_key}`,
+      profiles: selected[entry.student_id].student,
+      scheduled_at: entry.attended_at,
+      attendance_status: 'on_time',
+      submission_open: attendance.module !== '1',
+      report_group: `${attendance.track}-${attendance.module.replace('&', '-')}`,
+      report_label: `${attendance.track.toUpperCase()} Module ${attendance.module} Report`
+    })), ...current]);
     const { data: sessionData } = await supabase.auth.getSession();
     const sheetEntries = entries.map((entry) => {
         const student = selected[entry.student_id].student;
@@ -231,6 +241,7 @@ export default function AdminPage() {
         });
       }
       setMessage(`Nothing was kept because both systems did not confirm the save. ${sheetResult.error || databaseError?.message || 'Please try again.'}`);
+      await load();
     } else {
       setMessage(`${databaseResult.data || selectedCount} students saved to the website and Google Sheet.`);
       setSelected({});
@@ -304,6 +315,7 @@ export default function AdminPage() {
   };
 
   const patchAttendance = async (session, changes, sheetChanges, successMessage) => {
+    setSessions((current) => current.map((item) => item.id === session.id ? { ...item, ...changes } : item));
     const { data: auth } = await supabase.auth.getSession();
     const response = await fetch('/api/attendance', {
       method: 'PATCH',
@@ -311,7 +323,7 @@ export default function AdminPage() {
       body: JSON.stringify({ entry: { sourceKey: session.source_row_key, ...sheetChanges } })
     });
     const result = await response.json();
-    if (!response.ok) { setMessage(`Nothing changed. Google Sheet connection failed: ${result.error || 'unknown error'}`); return; }
+    if (!response.ok) { setMessage(`Nothing changed. Google Sheet connection failed: ${result.error || 'unknown error'}`); await load(); return; }
     const { error } = await supabase.from('practicum_sessions').update({ ...changes, sheet_updated_at: new Date().toISOString() }).eq('id', session.id);
     setMessage(error ? `The Sheet changed, but the website needs a sync: ${error.message}` : successMessage);
     await load();
@@ -348,19 +360,22 @@ export default function AdminPage() {
       report_group: reportGroup, report_label: scheduleModule.includes('&') ? `Modules ${scheduleModule} Combined Report` : `Module ${scheduleModule} Report`,
       planned_week_start: scheduleWeek, planned_lab_date: plannedDate, status: existing?.status || 'expected', updated_at: new Date().toISOString()
     };
+    setPlans((current) => existing ? current.map((plan) => plan.id === existing.id ? { ...plan, ...payload } : plan) : [...current, { ...payload, id: `saving-${payload.source_row_key}`, profiles: student }]);
     const { data: auth } = await supabase.auth.getSession();
     const response = await fetch('/api/admin-data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.session?.access_token || ''}` }, body: JSON.stringify({ action: 'upsertPlan', plan: { ...payload, moduleLabel: scheduleModule } }) });
     const result = await response.json();
     setMessage(response.ok ? `${student.full_name} scheduled for ${plannedDate} on the website and Sheet. Submission access is unchanged.` : result.error);
     if (response.ok) { setScheduleQuery(''); await load(); }
+    else await load();
   };
 
   const removeSchedule = async (plan) => {
+    setPlans((current) => current.filter((item) => item.id !== plan.id));
     const { data: auth } = await supabase.auth.getSession();
     const response = await fetch('/api/admin-data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.session?.access_token || ''}` }, body: JSON.stringify({ action: 'deletePlan', source_row_key: plan.source_row_key }) });
     const result = await response.json();
     setMessage(response.ok ? 'Planned date removed from the website and Sheet. Attendance and submission access were not changed.' : result.error);
-    if (response.ok) load();
+    await load();
   };
 
   const updatePlanStatus = async (planId, status) => {
@@ -482,3 +497,4 @@ export default function AdminPage() {
     </>}
   </section>;
 }
+
