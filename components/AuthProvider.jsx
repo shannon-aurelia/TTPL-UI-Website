@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { getSupabase } from '../lib/supabaseClient';
 
 const AuthContext = createContext({ user: null, profile: null, loading: true, configured: false });
@@ -10,6 +10,15 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const supabase = useMemo(() => getSupabase(), []);
+
+  const refreshProfile = useCallback(async () => {
+    if (!supabase) return null;
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) return null;
+    const { data } = await supabase.from('profiles').select('*').eq('id', auth.user.id).maybeSingle();
+    setProfile(data || null);
+    return data || null;
+  }, [supabase]);
 
   useEffect(() => {
     if (!supabase) {
@@ -25,6 +34,13 @@ export function AuthProvider({ children }) {
         return;
       }
       const { data } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
+      if (data?.is_active === false) {
+        await supabase.auth.signOut();
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
       setProfile(data || null);
       setLoading(false);
     };
@@ -34,7 +50,7 @@ export function AuthProvider({ children }) {
     return () => listener.subscription.unsubscribe();
   }, [supabase]);
 
-  const value = { user, profile, loading, configured: Boolean(supabase), supabase };
+  const value = { user, profile, loading, configured: Boolean(supabase), supabase, refreshProfile };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
