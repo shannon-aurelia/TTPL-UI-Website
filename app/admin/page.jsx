@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BookOpenCheck, CalendarCheck, CalendarDays, Download, ExternalLink, GripVertical, LogOut, RefreshCw, Search, Trash2, UserRoundX, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../components/AuthProvider';
+import ProfileEditor from '../../components/ProfileEditor';
 
 const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1NqCyRfXKIotsbx019oP1RBer3aj3EPSTQRLes__i_nc/edit';
 
@@ -92,6 +93,7 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [deleting, setDeleting] = useState('');
+  const [profileDrafts, setProfileDrafts] = useState({});
   const router = useRouter();
   const isStaff = profile?.role === 'assistant' || profile?.role === 'admin';
 
@@ -124,6 +126,7 @@ export default function AdminPage() {
     if (!supabase || !isStaff) return undefined;
     const channel = supabase
       .channel('ttpl-admin-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'practicum_sessions' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_module_plans' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, load)
@@ -169,6 +172,7 @@ export default function AdminPage() {
       return;
     }
     setSaving(true);
+    setMessage('Saving attendance and QnA to the website and Google Sheet...');
     const moduleNumber = Number(attendance.module.split('&')[0]);
     const attendedAt = new Date(`${attendance.attended_date}T${attendance.attended_time}:00+07:00`).toISOString();
     const entries = Object.values(selected).map(({ student, score }) => ({
@@ -242,7 +246,7 @@ export default function AdminPage() {
     const { data } = await supabase.auth.getSession();
     const response = await fetch('/api/sync-attendance', { method: 'POST', headers: { Authorization: `Bearer ${data.session?.access_token || ''}` } });
     const result = await response.json();
-    setMessage(response.ok ? `${result.attendanceSynced} attendance rows and ${result.plansSynced} plans synchronized.` : result.error);
+    setMessage(response.ok ? `${result.studentsSynced} students, ${result.attendanceSynced} attendance rows, and ${result.plansSynced} plans synchronized.` : result.error);
     if (response.ok) load();
     setSyncing(false);
   };
@@ -278,10 +282,25 @@ export default function AdminPage() {
   const deleteStudent = async (student) => {
     if (!confirm(`Permanently delete ${student.full_name || student.email} and all of their practicum data?`)) return;
     setDeleting(student.id);
-    const { error } = await supabase.rpc('admin_delete_student_account', { target_id: student.id });
-    setMessage(error ? error.message : 'Student account and practicum records deleted.');
-    if (!error) await load();
+    const { data: auth } = await supabase.auth.getSession();
+    const response = await fetch('/api/admin-data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.session?.access_token || ''}` }, body: JSON.stringify({ action: 'deleteStudent', id: student.id }) });
+    const result = await response.json();
+    setMessage(response.ok ? 'Student account, linked practicum data, and Sheet row deleted.' : result.error);
+    if (response.ok) await load();
     setDeleting('');
+  };
+
+  const saveStudent = async (student) => {
+    const draft = profileDrafts[student.id] || student;
+    const { data: auth } = await supabase.auth.getSession();
+    const response = await fetch('/api/admin-data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.session?.access_token || ''}` },
+      body: JSON.stringify({ action: 'updateStudent', id: student.id, full_name: draft.full_name, npm: draft.npm, group_name: draft.group_name, study_program: draft.study_program, is_active: draft.is_active })
+    });
+    const result = await response.json();
+    setMessage(response.ok ? 'Student profile updated on the website and Sheet.' : result.error);
+    if (response.ok) { setProfileDrafts((current) => { const next = { ...current }; delete next[student.id]; return next; }); await load(); }
   };
 
   const patchAttendance = async (session, changes, sheetChanges, successMessage) => {
@@ -329,22 +348,30 @@ export default function AdminPage() {
       report_group: reportGroup, report_label: scheduleModule.includes('&') ? `Modules ${scheduleModule} Combined Report` : `Module ${scheduleModule} Report`,
       planned_week_start: scheduleWeek, planned_lab_date: plannedDate, status: existing?.status || 'expected', updated_at: new Date().toISOString()
     };
-    const request = existing ? supabase.from('student_module_plans').update(payload).eq('id', existing.id) : supabase.from('student_module_plans').insert(payload);
-    const { error } = await request;
-    setMessage(error ? error.message : `${student.full_name} scheduled for ${plannedDate}. This does not open submission access.`);
-    if (!error) { setScheduleQuery(''); await load(); }
+    const { data: auth } = await supabase.auth.getSession();
+    const response = await fetch('/api/admin-data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.session?.access_token || ''}` }, body: JSON.stringify({ action: 'upsertPlan', plan: { ...payload, moduleLabel: scheduleModule } }) });
+    const result = await response.json();
+    setMessage(response.ok ? `${student.full_name} scheduled for ${plannedDate} on the website and Sheet. Submission access is unchanged.` : result.error);
+    if (response.ok) { setScheduleQuery(''); await load(); }
   };
 
   const removeSchedule = async (plan) => {
-    const { error } = await supabase.from('student_module_plans').delete().eq('id', plan.id);
-    setMessage(error ? error.message : 'Planned date removed. Attendance and submission access were not changed.');
-    if (!error) load();
+    const { data: auth } = await supabase.auth.getSession();
+    const response = await fetch('/api/admin-data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.session?.access_token || ''}` }, body: JSON.stringify({ action: 'deletePlan', source_row_key: plan.source_row_key }) });
+    const result = await response.json();
+    setMessage(response.ok ? 'Planned date removed from the website and Sheet. Attendance and submission access were not changed.' : result.error);
+    if (response.ok) load();
   };
 
   const updatePlanStatus = async (planId, status) => {
-    const { error } = await supabase.from('student_module_plans').update({ status, updated_at: new Date().toISOString() }).eq('id', planId);
-    setMessage(error ? error.message : 'Plan status updated.');
-    if (!error) load();
+    const plan = plans.find((item) => item.id === planId);
+    if (!plan) return;
+    const { data: auth } = await supabase.auth.getSession();
+    const payload = { source_row_key: plan.source_row_key, student_id: plan.student_id, track: plan.track, week_number: plan.week_number, module_number: plan.module_number, moduleLabel: moduleLabel(plan), report_group: plan.report_group, report_label: plan.report_label, planned_week_start: plan.planned_week_start, planned_lab_date: plan.planned_lab_date, status, notes: plan.notes };
+    const response = await fetch('/api/admin-data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.session?.access_token || ''}` }, body: JSON.stringify({ action: 'upsertPlan', plan: payload }) });
+    const result = await response.json();
+    setMessage(response.ok ? 'Plan status updated on the website and Sheet.' : result.error);
+    if (response.ok) load();
   };
 
   const updateSubmission = async (id, changes) => {
@@ -392,6 +419,7 @@ export default function AdminPage() {
       <div className="card metric-card"><UserRoundX/><span>Still expected</span><b>{missingPlans.length}</b></div>
       <div className="card metric-card"><Download/><span>Submissions</span><b>{submissions.length}</b></div>
     </div>
+    <ProfileEditor/>
 
     <div className="admin-tabs" role="tablist">
       <button className={tab === 'attendance' ? 'active' : ''} onClick={() => setTab('attendance')}>Today’s attendance</button>
@@ -450,7 +478,7 @@ export default function AdminPage() {
 
     {tab === 'accounts' && profile.role === 'admin' && <>
       <div className="card registration-control"><div><h2>Student registration mode</h2><p className="muted">Keep external emails enabled while testing. Turn it off before the practicum opens to students.</p></div><button className="btn" onClick={toggleExternalRegistration}>{settings?.allow_external_student_registration ? 'Testing: Gmail allowed' : 'Production: UI email only'}</button></div>
-      <div className="card table-card"><div className="table-scroll"><table className="dashboard-table admin-account-table"><thead><tr><th>Name</th><th>NPM</th><th>Email</th><th>Access</th><th>Delete</th></tr></thead><tbody>{filteredProfiles.map((item) => <tr key={item.id}><td><b>{item.full_name}</b></td><td>{item.npm || 'Not set'}</td><td>{item.email}</td><td><select value={item.role} disabled={item.id === user.id} onChange={(event) => updateRole(item.id, event.target.value)}><option value="student">Student</option><option value="assistant">Assistant</option><option value="admin">Administrator</option></select>{item.id === user.id && <small>Your account</small>}</td><td>{item.role === 'student' ? <button className="danger-action" type="button" disabled={deleting === item.id} onClick={() => deleteStudent(item)}><Trash2 size={16}/>{deleting === item.id ? 'Deleting...' : 'Delete student'}</button> : <small>Staff protected</small>}</td></tr>)}</tbody></table></div></div>
+      <div className="card table-card"><div className="table-scroll"><table className="dashboard-table admin-account-table"><thead><tr><th>Name</th><th>NPM</th><th>Group</th><th>Program</th><th>Email</th><th>Active</th><th>Access</th><th>Save or delete</th></tr></thead><tbody>{filteredProfiles.map((item) => { const draft = profileDrafts[item.id] || item; const change = (key, value) => setProfileDrafts((current) => ({ ...current, [item.id]: { ...draft, [key]: value } })); return <tr key={item.id}><td>{item.role === 'student' ? <input value={draft.full_name || ''} onChange={(event) => change('full_name', event.target.value)}/> : <b>{item.full_name}</b>}</td><td>{item.role === 'student' ? <input value={draft.npm || ''} onChange={(event) => change('npm', event.target.value)}/> : item.npm || 'Not set'}</td><td>{item.role === 'student' ? <input value={draft.group_name || ''} onChange={(event) => change('group_name', event.target.value)}/> : 'Staff'}</td><td>{item.role === 'student' ? <select value={draft.study_program || 'Electrical Engineering'} onChange={(event) => change('study_program', event.target.value)}><option>Electrical Engineering</option><option>Computer Engineering</option></select> : 'Staff'}</td><td>{item.email}</td><td>{item.role === 'student' ? <label className="account-active"><input type="checkbox" checked={draft.is_active !== false} onChange={(event) => change('is_active', event.target.checked)}/>{draft.is_active !== false ? 'Active' : 'Blocked'}</label> : 'Active'}</td><td><select value={item.role} disabled={item.id === user.id} onChange={(event) => updateRole(item.id, event.target.value)}><option value="student">Student</option><option value="assistant">Assistant</option><option value="admin">Administrator</option></select>{item.id === user.id && <small>Your account</small>}</td><td>{item.role === 'student' ? <div className="account-actions"><button className="table-link" type="button" onClick={() => saveStudent(item)}>Save edits</button><button className="danger-action" type="button" disabled={deleting === item.id} onClick={() => deleteStudent(item)}><Trash2 size={16}/>{deleting === item.id ? 'Deleting...' : 'Delete'}</button></div> : <small>Staff protected</small>}</td></tr>; })}</tbody></table></div></div>
     </>}
   </section>;
 }
