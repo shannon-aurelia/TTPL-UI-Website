@@ -13,19 +13,74 @@ function getConfig() {
   };
 }
 
-function sheetRows(spreadsheet, sheetName) {
+function sheetRows(spreadsheet, sheetName, headerRow) {
   const sheet = spreadsheet.getSheetByName(sheetName);
   if (!sheet) throw new Error('Sheet not found: ' + sheetName);
   const values = sheet.getDataRange().getDisplayValues();
-  if (values.length < 2) return [];
-  const headers = values[0].map(function (value) { return value.trim(); });
-  return values.slice(1).filter(function (row) {
-    return String(row[0] || '').trim() !== '';
+  const headerIndex = Math.max(0, Number(headerRow || 1) - 1);
+  if (values.length <= headerIndex + 1) return [];
+  const headers = values[headerIndex].map(function (value) { return value.trim(); });
+  return values.slice(headerIndex + 1).filter(function (row) {
+    return row.some(function (value) { return String(value || '').trim() !== ''; });
   }).map(function (row) {
     const record = {};
     headers.forEach(function (header, index) { record[header] = String(row[index] || '').trim(); });
     return record;
   });
+}
+
+function upsertRow(sheet, headerRow, matchHeaders, data) {
+  const headers = sheet.getRange(headerRow, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  const normalized = {};
+  headers.forEach(function (header, index) { normalized[String(header).trim()] = index; });
+  let targetRow = 0;
+  for (let row = headerRow + 1; row <= sheet.getLastRow(); row += 1) {
+    const values = sheet.getRange(row, 1, 1, headers.length).getDisplayValues()[0];
+    const matches = matchHeaders.some(function (header) {
+      const value = data[header];
+      const index = normalized[header];
+      return value != null && String(value).trim() !== '' && index != null && String(values[index]).trim().toLowerCase() === String(value).trim().toLowerCase();
+    });
+    if (matches) { targetRow = row; break; }
+  }
+  const existing = targetRow ? sheet.getRange(targetRow, 1, 1, headers.length).getValues()[0] : Array(headers.length).fill('');
+  headers.forEach(function (header, index) {
+    const key = String(header).trim();
+    if (Object.prototype.hasOwnProperty.call(data, key)) existing[index] = data[key];
+  });
+  if (targetRow) sheet.getRange(targetRow, 1, 1, headers.length).setValues([existing]);
+  else sheet.getRange(sheet.getLastRow() + 1, 1, 1, headers.length).setValues([existing]);
+  return { saved: 1 };
+}
+
+function deleteMatchingRow(sheet, headerRow, matchHeaders, data) {
+  const headers = sheet.getRange(headerRow, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  let deleted = 0;
+  for (let row = sheet.getLastRow(); row > headerRow; row -= 1) {
+    const values = sheet.getRange(row, 1, 1, headers.length).getDisplayValues()[0];
+    const matches = matchHeaders.some(function (header) {
+      const index = headers.indexOf(header);
+      return index >= 0 && data[header] && String(values[index]).trim().toLowerCase() === String(data[header]).trim().toLowerCase();
+    });
+    if (matches) { sheet.deleteRow(row); deleted += 1; }
+  }
+  return { deleted: deleted };
+}
+
+function upsertStudent(spreadsheet, data) {
+  return upsertRow(spreadsheet.getSheetByName('Students'), 2, ['Account ID', 'Email', 'NPM'], data);
+}
+
+function deleteStudent(spreadsheet, data) {
+  return deleteMatchingRow(spreadsheet.getSheetByName('Students'), 2, ['Account ID', 'Email', 'NPM'], data);
+}
+
+function upsertPlan(spreadsheet, data) {
+  return upsertRow(spreadsheet.getSheetByName('Module Plans'), 1, ['source_key'], data);
+}
+
+function deletePlan(spreadsheet, data) {
+  return deleteMatchingRow(spreadsheet.getSheetByName('Module Plans'), 1, ['source_key'], data);
 }
 
 function appendSubmission(spreadsheet, data, file) {
@@ -110,7 +165,8 @@ function deleteAttendance(spreadsheet, sourceKeys) {
 }
 
 function syncWebsiteFromSheet(event) {
-  if (event && event.range && event.range.getSheet().getName() !== 'QnA Attendance' && event.range.getSheet().getName() !== 'Module Plans') return;
+  const supported = ['Students', 'QnA Attendance', 'Module Plans'];
+  if (event && event.range && supported.indexOf(event.range.getSheet().getName()) === -1) return;
   const config = getConfig();
   const syncSecret = config.secret || config.websiteSyncSecret;
   if (!config.websiteSyncUrl || !syncSecret) return;
@@ -167,10 +223,20 @@ function doPost(event) {
     const body = JSON.parse(event.postData.contents || '{}');
     if (!config.secret || body.secret !== config.secret) return jsonResponse({ error: 'Unauthorized' });
     const spreadsheet = SpreadsheetApp.openById(config.spreadsheetId);
-    if (body.action === 'attendanceRows') return jsonResponse({ rows: sheetRows(spreadsheet, 'QnA Attendance') });
-    if (body.action === 'modulePlanRows') return jsonResponse({ rows: sheetRows(spreadsheet, 'Module Plans') });
+    if (body.action === 'syncSnapshot') return jsonResponse({ data: {
+      students: sheetRows(spreadsheet, 'Students', 2),
+      attendance: sheetRows(spreadsheet, 'QnA Attendance', 1),
+      plans: sheetRows(spreadsheet, 'Module Plans', 1)
+    }});
+    if (body.action === 'attendanceRows') return jsonResponse({ rows: sheetRows(spreadsheet, 'QnA Attendance', 1) });
+    if (body.action === 'modulePlanRows') return jsonResponse({ rows: sheetRows(spreadsheet, 'Module Plans', 1) });
+    if (body.action === 'studentRows') return jsonResponse({ rows: sheetRows(spreadsheet, 'Students', 2) });
     if (body.action === 'appendAttendance') return jsonResponse({ data: appendAttendance(spreadsheet, body.data) });
     if (body.action === 'deleteAttendance') return jsonResponse({ data: deleteAttendance(spreadsheet, body.data) });
+    if (body.action === 'upsertStudent') return jsonResponse({ data: upsertStudent(spreadsheet, body.data) });
+    if (body.action === 'deleteStudent') return jsonResponse({ data: deleteStudent(spreadsheet, body.data) });
+    if (body.action === 'upsertPlan') return jsonResponse({ data: upsertPlan(spreadsheet, body.data) });
+    if (body.action === 'deletePlan') return jsonResponse({ data: deletePlan(spreadsheet, body.data) });
     if (body.action === 'uploadReport') return jsonResponse({ data: uploadReport(config, spreadsheet, body.data) });
     return jsonResponse({ error: 'Unknown action' });
   } catch (error) {
