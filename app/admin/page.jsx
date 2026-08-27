@@ -122,16 +122,13 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!supabase || !isStaff) return undefined;
-    const syncInBackground = async () => {
-      const { data } = await supabase.auth.getSession();
-      const response = await fetch('/api/sync-attendance', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${data.session?.access_token || ''}` }
-      });
-      if (response.ok) load();
-    };
-    const timer = window.setInterval(syncInBackground, 30000);
-    return () => window.clearInterval(timer);
+    const channel = supabase
+      .channel('ttpl-admin-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'practicum_sessions' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_module_plans' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [supabase, isStaff, load]);
 
   const students = useMemo(() => profiles.filter((item) => item.role === 'student'), [profiles]);
@@ -204,7 +201,7 @@ export default function AdminPage() {
           assistantCode: ''
         };
       });
-    const sheetResponse = await fetch('/api/attendance', {
+    const sheetRequest = fetch('/api/attendance', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -212,15 +209,26 @@ export default function AdminPage() {
         },
         body: JSON.stringify({ entries: sheetEntries })
       });
-    const sheetResult = await sheetResponse.json();
-    if (!sheetResponse.ok) {
-      setMessage(`Nothing was saved. Google Sheet connection failed: ${sheetResult.error || 'unknown error'}`);
-      setSaving(false);
-      return;
-    }
-    const { data, error } = await supabase.rpc('staff_record_attendance_batch', { entries });
-    setMessage(error ? `The Sheet was saved, but the website needs a sync: ${error.message}` : `${data || selectedCount} students saved to the website and Google Sheet.`);
-    if (!error) {
+    const databaseRequest = supabase.rpc('staff_record_attendance_batch', { entries });
+    const [sheetResponse, databaseResult] = await Promise.all([sheetRequest, databaseRequest]);
+    let sheetResult = {};
+    try { sheetResult = await sheetResponse.json(); } catch { sheetResult = { error: 'Invalid response from Google Sheets' }; }
+    const databaseError = databaseResult.error;
+
+    if (!sheetResponse.ok || databaseError) {
+      if (!sheetResponse.ok && !databaseError) {
+        await supabase.from('practicum_sessions').delete().in('source_row_key', entries.map((entry) => entry.source_row_key));
+      }
+      if (sheetResponse.ok && databaseError) {
+        await fetch('/api/attendance', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token || ''}` },
+          body: JSON.stringify({ sourceKeys: entries.map((entry) => entry.source_row_key) })
+        });
+      }
+      setMessage(`Nothing was kept because both systems did not confirm the save. ${sheetResult.error || databaseError?.message || 'Please try again.'}`);
+    } else {
+      setMessage(`${databaseResult.data || selectedCount} students saved to the website and Google Sheet.`);
       setSelected({});
       setStudentQuery('');
       setQuery('');
@@ -420,10 +428,10 @@ export default function AdminPage() {
           })}
         </div>
         <label className="batch-notes">Notes for this session<input value={attendance.notes} onChange={(event) => setAttendance({ ...attendance, notes: event.target.value })}/></label>
-        <button className="btn batch-save" type="submit" disabled={saving || !selectedCount}>{saving ? 'Saving attendance...' : `Save ${selectedCount || ''} students`}</button>
+        <button className="btn batch-save" type="submit" disabled={saving || !selectedCount}>{saving ? 'Confirming website + Sheet...' : `Save ${selectedCount || ''} students`}</button>
       </form>
 
-      <div className="card table-card"><div className="table-scroll"><table className="dashboard-table"><thead><tr><th>Student</th><th>Attendance</th><th>Module</th><th>QnA</th><th>Deadline</th><th>Submission</th><th>Delete</th></tr></thead><tbody>{filteredSessions.map((session) => <tr key={session.id}><td><b>{session.profiles?.full_name}</b><small>{session.profiles?.npm}</small></td><td>{displayDate(session.attended_at || session.scheduled_at)}<small>{session.is_makeup ? 'Makeup session' : `Week ${session.week_number}`}</small></td><td><b>{session.track.toUpperCase()} M{moduleLabel(session)}</b><small>{session.report_label}</small></td><td><input className="score-edit" type="number" min="0" max="100" step="0.01" defaultValue={session.qna_score ?? ''} placeholder="Not entered" onBlur={(event) => updateQna(session, event.target.value)}/><small>Click away to save</small></td><td><input type="datetime-local" defaultValue={localInputValue(session.deadline_at)} onBlur={(event) => event.target.value && updateDeadline(session, event.target.value)}/><small>{session.deadline_override_reason || 'Automatic: next day 23:59 WIB'}</small></td><td><button type="button" className={`access-toggle ${session.submission_open ? 'open' : ''}`} onClick={() => toggleSubmissionAccess(session)}>{session.submission_open ? 'Open' : 'Closed'}</button><small>Click to change access</small></td><td><button className="danger-action" type="button" disabled={deleting === session.id} onClick={() => deleteAttendance(session)}><Trash2 size={16}/>{deleting === session.id ? 'Deleting...' : 'Delete'}</button></td></tr>)}</tbody></table></div></div>
+      <div className="card table-card"><div className="table-scroll"><table className="dashboard-table"><thead><tr><th>Student</th><th>Attendance</th><th>Module</th><th>QnA</th><th>Deadline</th><th>Submission</th><th>Delete</th></tr></thead><tbody>{filteredSessions.map((session) => <tr key={session.id}><td><b>{session.profiles?.full_name}</b><small>{session.profiles?.npm}</small></td><td>{displayDate(session.attended_at || session.scheduled_at)}<small>{session.is_makeup ? 'Makeup session' : `Week ${session.week_number}`}</small></td><td><b>{session.track.toUpperCase()} M{moduleLabel(session)}</b><small>{session.report_label}</small></td><td><input className="score-edit" type="number" min="0" max="100" step="0.01" defaultValue={session.qna_score ?? ''} placeholder="Not entered" onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} onBlur={(event) => updateQna(session, event.target.value)}/><small>Press Enter or click away to save</small></td><td><input type="datetime-local" defaultValue={localInputValue(session.deadline_at)} onBlur={(event) => event.target.value && updateDeadline(session, event.target.value)}/><small>{session.deadline_override_reason || 'Automatic: next day 23:59 WIB'}</small></td><td><button type="button" className={`access-toggle ${session.submission_open ? 'open' : ''}`} onClick={() => toggleSubmissionAccess(session)}>{session.submission_open ? 'Open' : 'Closed'}</button><small>Click to change access</small></td><td><button className="danger-action" type="button" disabled={deleting === session.id} onClick={() => deleteAttendance(session)}><Trash2 size={16}/>{deleting === session.id ? 'Deleting...' : 'Delete'}</button></td></tr>)}</tbody></table></div></div>
     </>}
 
     {tab === 'calendar' && <>

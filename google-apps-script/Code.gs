@@ -112,10 +112,11 @@ function deleteAttendance(spreadsheet, sourceKeys) {
 function syncWebsiteFromSheet(event) {
   if (event && event.range && event.range.getSheet().getName() !== 'QnA Attendance' && event.range.getSheet().getName() !== 'Module Plans') return;
   const config = getConfig();
-  if (!config.websiteSyncUrl || !config.websiteSyncSecret) return;
+  const syncSecret = config.secret || config.websiteSyncSecret;
+  if (!config.websiteSyncUrl || !syncSecret) return;
   UrlFetchApp.fetch(config.websiteSyncUrl, {
     method: 'post',
-    headers: { 'x-sync-secret': config.websiteSyncSecret },
+    headers: { 'x-sync-secret': syncSecret },
     muteHttpExceptions: true
   });
 }

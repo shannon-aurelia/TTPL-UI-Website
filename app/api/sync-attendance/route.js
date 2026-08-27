@@ -51,7 +51,11 @@ function calculateDeadline(attendanceDate, override) {
 }
 
 async function authorizeStaff(request, url, anonKey) {
-  if (request.headers.get('x-sync-secret') === process.env.ATTENDANCE_SYNC_SECRET) return true;
+  const syncSecret = request.headers.get('x-sync-secret');
+  if (syncSecret && (
+    syncSecret === process.env.ATTENDANCE_SYNC_SECRET ||
+    syncSecret === process.env.GOOGLE_APPS_SCRIPT_SECRET
+  )) return true;
   const authorization = request.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ')) return false;
   const token = authorization.slice(7);
@@ -70,9 +74,12 @@ async function appsScriptRows(action) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, secret }),
-    cache: 'no-store'
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15000)
   });
   if (!response.ok) throw new Error('Could not reach the Google control sheet');
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) throw new Error('Google control sheet returned an invalid response');
   const body = await response.json();
   if (body.error) throw new Error(body.error);
   return body.rows || [];
@@ -86,9 +93,15 @@ export async function POST(request) {
   if (!supabaseUrl || !anonKey || !serviceKey) return NextResponse.json({ error: 'Missing server configuration' }, { status: 500 });
   if (!await authorizeStaff(request, supabaseUrl, anonKey)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let records = await appsScriptRows('attendanceRows');
+  let records;
+  let planRecords;
+  try {
+    records = await appsScriptRows('attendanceRows');
+    planRecords = (await appsScriptRows('modulePlanRows') || []).filter((record) => record.source_key && (record.npm || record.email));
+  } catch (error) {
+    return NextResponse.json({ error: error.message || 'Could not synchronize the Google control sheet' }, { status: 502 });
+  }
   records = (records || []).filter((record) => record.source_key && (record.npm || record.email));
-  const planRecords = (await appsScriptRows('modulePlanRows') || []).filter((record) => record.source_key && (record.npm || record.email));
   if (!records) {
     if (!sheetUrl) return NextResponse.json({ error: 'Google Sheet connection is not configured' }, { status: 500 });
     const response = await fetch(sheetUrl, { cache: 'no-store' });
