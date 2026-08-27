@@ -2704,14 +2704,16 @@ html[data-theme="light"] .home-flow article>span { color: rgba(9,71,89,.42); }
   .brand { min-width: 0; }
   .brand b { font-size: 16px; }
   .login-btn { min-width: 0; padding-inline: 12px; }
-  .home-hero { min-height: 790px; }
+  .home-hero { min-height: 720px; }
   .home-hero-content { width: calc(100vw - 34px); }
   .home-hero h1 { font-size: clamp(50px, 16vw, 78px); }
   .home-actions { align-items: stretch; }
   .home-actions .btn { justify-content: center; width: 100%; }
   .home-actions .text-link { width: 100%; justify-content: center; }
-  .home-season { margin-top: -24px; padding: 22px; border-radius: 19px; }
-  .home-season-copy { grid-template-columns: 1fr; }
+  .home-season { margin-top: -34px; padding: 22px; border-radius: 19px; }
+  .home-season-copy { grid-template-columns: 28px minmax(0, 1fr); gap: 12px; }
+  .home-season-copy .section-index { padding-top: 2px; }
+  .home-season-copy .eyebrow { line-height: 1.35; }
   .home-season-actions>a { min-height: 76px; }
   .home-standard { padding: 28px 20px; }
   .home-flow article { grid-template-columns: 42px 1fr; }
