@@ -7,9 +7,9 @@ import { ChevronDown, Globe2, Menu, Moon, Sun, X } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 
 const copy = {
-  en: { practicum: 'Practicum', lab: 'Virtual Lab', works: 'Lab updates', assistants: 'People', news: 'News', contact: 'Contact', login: 'Sign in', portal: 'My portal', admin: 'Admin desk', light: 'Light', dark: 'Dark', menu: 'Menu', tagline: 'High Voltage & Electrical Measurement Laboratory' },
-  id: { practicum: 'Praktikum', lab: 'Lab Virtual', works: 'Kegiatan Lab', assistants: 'Tim', news: 'Berita', contact: 'Kontak', login: 'Masuk', portal: 'Portal saya', admin: 'Meja admin', light: 'Terang', dark: 'Gelap', menu: 'Menu', tagline: 'Laboratorium Tegangan Tinggi & Pengukuran Listrik' },
-  zh: { practicum: '实验课', lab: '虚拟实验室', works: '实验室动态', assistants: '团队', news: '新闻', contact: '联系', login: '登录', portal: '我的入口', admin: '管理台', light: '浅色', dark: '深色', menu: '菜单', tagline: '高电压与电测量实验室' }
+  en: { practicum: 'Practicum', lab: 'Virtual Lab', works: 'Lab updates', assistants: 'People', news: 'News', contact: 'Contact', login: 'Sign in', portal: 'My portal', admin: 'Admin desk', light: 'Light', dark: 'Dark', menu: 'Menu', tagline: 'Surging W⚡th Voltage' },
+  id: { practicum: 'Praktikum', lab: 'Lab Virtual', works: 'Kegiatan Lab', assistants: 'Tim', news: 'Berita', contact: 'Kontak', login: 'Masuk', portal: 'Portal saya', admin: 'Meja admin', light: 'Terang', dark: 'Gelap', menu: 'Menu', tagline: 'Surging W⚡th Voltage' },
+  zh: { practicum: '实验课', lab: '虚拟实验室', works: '实验室动态', assistants: '团队', news: '新闻', contact: '联系', login: '登录', portal: '我的入口', admin: '管理台', light: '浅色', dark: '深色', menu: '菜单', tagline: 'Surging W⚡th Voltage' }
 };
 
 const routes = [
