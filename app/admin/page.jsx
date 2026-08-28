@@ -429,14 +429,16 @@ export default function AdminPage() {
     {message && <div className="status-message">{message}</div>}
 
     <div className="dashboard-stats">
-      <div className="card metric-card"><Users/><span>Students</span><b>{students.length}</b></div>
-      <div className="card metric-card"><CalendarCheck/><span>Attendance records</span><b>{sessions.length}</b></div>
-      <div className="card metric-card"><UserRoundX/><span>Still expected</span><b>{missingPlans.length}</b></div>
-      <div className="card metric-card"><Download/><span>Submissions</span><b>{submissions.length}</b></div>
+      <Link className="card metric-card" href="/admin/students"><Users/><span>Students</span><b>{students.length}</b><small>Open student directory</small></Link>
+      <a className="card metric-card" href="#attendance-records" onClick={() => setTab('attendance')}><CalendarCheck/><span>Attendance records</span><b>{sessions.length}</b><small>Review QnA and attendance</small></a>
+      <Link className="card metric-card" href="/admin/schedule"><UserRoundX/><span>Still expected</span><b>{missingPlans.length}</b><small>Open planning calendar</small></Link>
+      <a className="card metric-card" href="#submission-records" onClick={() => setTab('submissions')}><Download/><span>Submissions</span><b>{submissions.length}</b><small>Open submission reviews</small></a>
     </div>
     <ProfileEditor/>
 
     <div className="admin-tabs" role="tablist">
+      <Link href="/admin/students">Students</Link>
+      <Link href="/admin/schedule">Schedule calendar</Link>
       <button className={tab === 'attendance' ? 'active' : ''} onClick={() => setTab('attendance')}>Today’s attendance</button>
       <button className={tab === 'calendar' ? 'active' : ''} onClick={() => setTab('calendar')}>Planning calendar</button>
       <button className={tab === 'missing' ? 'active' : ''} onClick={() => setTab('missing')}>Missing students</button>
@@ -447,7 +449,7 @@ export default function AdminPage() {
     {tab !== 'calendar' && <div className="card dashboard-tools"><label><Search size={17}/><input placeholder="Search name, NPM, email, or report" value={query} onChange={(event) => setQuery(event.target.value)}/></label></div>}
 
     {tab === 'attendance' && <>
-      <form className="card batch-attendance" onSubmit={saveToday}>
+      <form className="card batch-attendance" id="attendance-records" onSubmit={saveToday}>
         <div className="batch-heading"><div><div className="eyebrow">Step 1</div><h2>Set today’s session</h2></div><b>{selectedCount} selected</b></div>
         <div className="batch-session-grid">
           <label>Track<select value={attendance.track} onChange={(event) => setAttendance({ ...attendance, track: event.target.value, module: event.target.value === 'rl' ? '2&3' : '1' })}><option value="rl">RL</option><option value="idp">IDP</option><option value="t3">T3</option></select></label>
@@ -497,4 +499,3 @@ export default function AdminPage() {
     </>}
   </section>;
 }
-

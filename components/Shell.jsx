@@ -9,7 +9,8 @@ import { useAuth } from './AuthProvider';
 const copy = {
   en: { practicum: 'Practicum', lab: 'Virtual Lab', works: 'Lab updates', assistants: 'People', news: 'News', contact: 'Contact', login: 'Sign in', portal: 'My portal', admin: 'Admin desk', light: 'Light', dark: 'Dark', menu: 'Menu', tagline: 'Surging W⚡th Voltage' },
   id: { practicum: 'Praktikum', lab: 'Lab Virtual', works: 'Kegiatan Lab', assistants: 'Tim', news: 'Berita', contact: 'Kontak', login: 'Masuk', portal: 'Portal saya', admin: 'Meja admin', light: 'Terang', dark: 'Gelap', menu: 'Menu', tagline: 'Surging W⚡th Voltage' },
-  zh: { practicum: '实验课', lab: '虚拟实验室', works: '实验室动态', assistants: '团队', news: '新闻', contact: '联系', login: '登录', portal: '我的入口', admin: '管理台', light: '浅色', dark: '深色', menu: '菜单', tagline: 'Surging W⚡th Voltage' }
+  zh: { practicum: '实验课', lab: '虚拟实验室', works: '实验室动态', assistants: '团队', news: '新闻', contact: '联系', login: '登录', portal: '我的入口', admin: '管理台', light: '浅色', dark: '深色', menu: '菜单', tagline: 'Surging W⚡th Voltage' },
+  de: { practicum: 'Praktikum', lab: 'Virtuelles Labor', works: 'Labor-Updates', assistants: 'Team', news: 'Neuigkeiten', contact: 'Kontakt', login: 'Anmelden', portal: 'Mein Portal', admin: 'Administration', light: 'Hell', dark: 'Dunkel', menu: 'Menü', tagline: 'Surging W⚡th Voltage' }
 };
 
 const routes = [
@@ -31,7 +32,7 @@ export default function Shell({ children }) {
   useEffect(() => {
     const saved = localStorage.getItem('ttpl-lang');
     const systemLanguage = (navigator.language || 'en').toLowerCase();
-    setLang(saved || (systemLanguage.startsWith('zh') ? 'zh' : systemLanguage.startsWith('id') ? 'id' : 'en'));
+    setLang(saved || (systemLanguage.startsWith('zh') ? 'zh' : systemLanguage.startsWith('id') ? 'id' : systemLanguage.startsWith('de') ? 'de' : 'en'));
     setTheme(localStorage.getItem('ttpl-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
   }, []);
 
@@ -66,7 +67,7 @@ export default function Shell({ children }) {
             {theme === 'dark' ? <Sun size={18}/> : <Moon size={18}/>}<span>{theme === 'dark' ? t.light : t.dark}</span>
           </button>
           <label className="select-wrap" aria-label="Language">
-            <Globe2 size={17}/><select value={lang} onChange={(event) => setLang(event.target.value)}><option value="en">EN</option><option value="id">ID</option><option value="zh">中文</option></select><ChevronDown size={14}/>
+            <Globe2 size={17}/><select value={lang} onChange={(event) => setLang(event.target.value)}><option value="en">EN</option><option value="id">ID</option><option value="zh">中文</option><option value="de">DE</option></select><ChevronDown size={14}/>
           </label>
           <Link className="login-btn" href={user ? dashboardHref : '/login'}>{user ? dashboardLabel : t.login}</Link>
           <button className="mobile-menu-button" aria-expanded={menuOpen} aria-label={t.menu} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X/> : <Menu/>}</button>

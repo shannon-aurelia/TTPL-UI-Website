@@ -19,7 +19,7 @@ const text = {
     attend: 'Attend', attendText: 'Assistants record actual attendance and QnA scores for the session.',
     submit: 'Submit', submitText: 'Attendance opens the correct report upload until the following day at 23:59 WIB.',
     people: 'The people behind TTPL.', peopleText: 'A laboratory is built through careful teaching, reliable operations, and students who learn to respect every measurement.',
-    updates: 'See laboratory updates', crew: 'Meet the team'
+    updates: 'See laboratory updates', crew: 'Meet the team', connected: 'Your practicum, clearly connected.', modules: 'Modules', resources: 'Tracked resources', schedule: 'Schedule', deadlines: 'Attendance & deadlines', virtual: 'Virtual Lab', practice: 'Practice first', operating: 'Operating system', community: 'TTPL community', explore: 'Explore track'
   },
   id: {
     eyebrow: 'TTPL UI · Praktikum 2026/2027', titleA: 'Surging W', titleB: 'th Voltage',
@@ -35,7 +35,7 @@ const text = {
     attend: 'Kehadiran', attendText: 'Asisten mencatat kehadiran aktual dan nilai QnA pada sesi tersebut.',
     submit: 'Pengumpulan', submitText: 'Kehadiran membuka laporan yang tepat hingga hari berikutnya pukul 23.59 WIB.',
     people: 'Orang-orang di balik TTPL.', peopleText: 'Laboratorium dibangun melalui pengajaran yang teliti, operasi yang andal, dan mahasiswa yang menghargai setiap pengukuran.',
-    updates: 'Lihat kegiatan laboratorium', crew: 'Kenali tim'
+    updates: 'Lihat kegiatan laboratorium', crew: 'Kenali tim', connected: 'Praktikummu, terhubung dengan jelas.', modules: 'Modul', resources: 'Materi terlacak', schedule: 'Jadwal', deadlines: 'Kehadiran & deadline', virtual: 'Lab Virtual', practice: 'Berlatih dahulu', operating: 'Sistem operasional', community: 'Komunitas TTPL', explore: 'Jelajahi praktikum'
   },
   zh: {
     eyebrow: 'TTPL UI · 2026/2027 实验课', titleA: 'Surging W', titleB: 'th Voltage',
@@ -51,7 +51,23 @@ const text = {
     attend: '出勤', attendText: '助教记录实际出勤与当日 QnA 分数。',
     submit: '提交', submitText: '出勤后开放对应报告，截止至次日 23:59 WIB。',
     people: 'TTPL 背后的团队。', peopleText: '严谨教学、可靠运营与尊重每一次测量的学生，共同塑造实验室。',
-    updates: '查看实验室动态', crew: '认识团队'
+    updates: '查看实验室动态', crew: '认识团队', connected: '清晰连接你的整个实验流程。', modules: '模块', resources: '阅读记录', schedule: '时间表', deadlines: '出勤与截止时间', virtual: '虚拟实验室', practice: '先练习', operating: '运行系统', community: 'TTPL 社区', explore: '查看课程'
+  },
+  de: {
+    eyebrow: 'TTPL UI · Praktikum 2026/2027', titleA: 'Surging W', titleB: 'th Voltage',
+    lead: 'TTPL verbindet Elektrotechnik mit sorgfältiger Praxis in Schaltungen, Instrumentierung, Messtechnik und Hochspannungssicherheit.',
+    practicum: 'Praktikum öffnen', portal: 'Studierendenportal', lab: 'Virtuelles Labor erkunden',
+    season: 'Praktikum 2026/2027', seasonText: 'Module, Lesefortschritt, Termine, Anwesenheit, Berichtsfreigaben und Abgabefristen an einem Ort.',
+    tracks: 'Drei Fachgebiete. Ein Praktikumsstandard.', tracksText: 'Wähle einen Bereich und öffne Module, Vorbereitungsmaterialien, Videos und den Abgabeprozess.',
+    rl: 'Elektrische Schaltungen', rlText: 'Schaltungsanalyse von Maschen- und Knotenverfahren bis zu Wechselstrom- und Drehstromsystemen.',
+    idp: 'Instrumentierung & Messtechnik', idpText: 'Messgeräte korrekt verwenden und die Grundlagen jeder Messung verstehen.',
+    t3: 'Hochspannung & Hochstrom', t3Text: 'Erzeugung, Messung, Isolation, Impulse und Sicherheit bei Hochspannung.',
+    standard: 'Für den echten TTPL-Ablauf entwickelt.', standardText: 'Eine klare Laboridentität nach außen und ein fokussierter Arbeitsbereich für Studierende und Assistenten.',
+    prep: 'Vorbereiten', prepText: 'Module lesen, Videos ansehen und den geplanten Termin vor dem Labor prüfen.',
+    attend: 'Teilnehmen', attendText: 'Assistenten erfassen die tatsächliche Anwesenheit und die QnA-Punkte der Sitzung.',
+    submit: 'Abgeben', submitText: 'Die Anwesenheit öffnet den richtigen Bericht bis zum Folgetag um 23:59 WIB.',
+    people: 'Die Menschen hinter TTPL.', peopleText: 'Sorgfältige Lehre, zuverlässige Abläufe und Respekt vor jeder Messung prägen unser Labor.',
+    updates: 'Labor-Updates ansehen', crew: 'Team kennenlernen', connected: 'Dein Praktikum, klar verbunden.', modules: 'Module', resources: 'Erfasste Materialien', schedule: 'Zeitplan', deadlines: 'Anwesenheit & Fristen', virtual: 'Virtuelles Labor', practice: 'Zuerst üben', operating: 'Arbeitsablauf', community: 'TTPL Gemeinschaft', explore: 'Bereich erkunden'
   }
 };
 
@@ -91,11 +107,11 @@ export default function HomeClient({ current }) {
     </section>
 
     <section className="home-season section">
-      <div className="home-season-copy"><span className="section-index">01</span><div><div className="eyebrow">{t.season}</div><h2>Your practicum, clearly connected.</h2><p>{t.seasonText}</p></div></div>
+      <div className="home-season-copy"><span className="section-index">01</span><div><div className="eyebrow">{t.season}</div><h2>{t.connected}</h2><p>{t.seasonText}</p></div></div>
       <div className="home-season-actions">
-        <Link href="/practicum"><BookOpenCheck/><span><b>Modules</b><small>Tracked resources</small></span><ArrowRight/></Link>
-        <Link href="/portal"><CalendarClock/><span><b>Schedule</b><small>Attendance & deadlines</small></span><ArrowRight/></Link>
-        <Link href="/virtual-lab"><Gauge/><span><b>Virtual Lab</b><small>Practice first</small></span><ArrowRight/></Link>
+        <Link href="/practicum"><BookOpenCheck/><span><b>{t.modules}</b><small>{t.resources}</small></span><ArrowRight/></Link>
+        <Link href="/portal"><CalendarClock/><span><b>{t.schedule}</b><small>{t.deadlines}</small></span><ArrowRight/></Link>
+        <Link href="/virtual-lab"><Gauge/><span><b>{t.virtual}</b><small>{t.practice}</small></span><ArrowRight/></Link>
       </div>
     </section>
 
@@ -104,13 +120,13 @@ export default function HomeClient({ current }) {
       <div className="home-track-grid">
         {tracks.map((track) => <Link className="home-track" href={track.href} key={track.key}>
           <img src={track.image} alt=""/><div className="home-track-overlay"/>
-          <span>{track.code}</span><h3>{t[track.key]}</h3><p>{t[`${track.key}Text`]}</p><b>Explore track <ArrowRight size={17}/></b>
+          <span>{track.code}</span><h3>{t[track.key]}</h3><p>{t[`${track.key}Text`]}</p><b>{t.explore} <ArrowRight size={17}/></b>
         </Link>)}
       </div>
     </section>
 
     <section className="section home-standard">
-      <div className="home-standard-intro"><span className="section-index">03</span><div className="eyebrow">Operating system</div><h2>{t.standard}</h2><p>{t.standardText}</p></div>
+      <div className="home-standard-intro"><span className="section-index">03</span><div className="eyebrow">{t.operating}</div><h2>{t.standard}</h2><p>{t.standardText}</p></div>
       <div className="home-flow">
         <article><span>01</span><BookOpenCheck/><h3>{t.prep}</h3><p>{t.prepText}</p></article>
         <article><span>02</span><ShieldCheck/><h3>{t.attend}</h3><p>{t.attendText}</p></article>
@@ -120,7 +136,7 @@ export default function HomeClient({ current }) {
 
     <section className="section home-people">
       <div className="home-people-image"><img src="/people/current-team-announcement.jpg" alt="TTPL assistant team announcement"/></div>
-      <div className="home-people-copy"><Sparkles/><div className="eyebrow">TTPL community</div><h2>{t.people}</h2><p>{t.peopleText}</p><div className="home-name-list">{current.map((name) => <span key={name}>{name}</span>)}</div><div className="btn-row"><Link className="btn" href="/assistants">{t.crew}<ArrowRight size={17}/></Link><Link className="btn ghost" href="/works">{t.updates}</Link></div></div>
+      <div className="home-people-copy"><Sparkles/><div className="eyebrow">{t.community}</div><h2>{t.people}</h2><p>{t.peopleText}</p><div className="home-name-list">{current.map((name) => <span key={name}>{name}</span>)}</div><div className="btn-row"><Link className="btn" href="/assistants">{t.crew}<ArrowRight size={17}/></Link><Link className="btn ghost" href="/works">{t.updates}</Link></div></div>
     </section>
   </div>;
 }
