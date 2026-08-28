@@ -192,7 +192,7 @@ export default function AdminPage() {
       profiles: selected[entry.student_id].student,
       scheduled_at: entry.attended_at,
       attendance_status: 'on_time',
-      submission_open: attendance.module !== '1',
+      submission_open: attendance.module !== '1' && entry.qna_score !== '',
       report_group: `${attendance.track}-${attendance.module.replace('&', '-')}`,
       report_label: `${attendance.track.toUpperCase()} Module ${attendance.module} Report`
     })), ...current]);
@@ -341,11 +341,13 @@ export default function AdminPage() {
   const updateQna = async (session, value) => {
     const score = value === '' ? null : Number(value);
     if (score != null && (!Number.isFinite(score) || score < 0 || score > 100)) { setMessage('QnA score must be between 0 and 100.'); return; }
-    await patchAttendance(session, { qna_score: score }, { qnaScore: score }, 'QnA score updated on the website and Sheet.');
+    const eligible = score !== null && ['on_time', 'late'].includes(session.attendance_status);
+    await patchAttendance(session, { qna_score: score, submission_open: eligible }, { qnaScore: score, submissionOverride: eligible ? 'open' : 'closed' }, `QnA score updated on the website and Sheet. Submission is now ${eligible ? 'open' : 'closed'}.`);
   };
 
   const toggleSubmissionAccess = async (session) => {
     const next = !session.submission_open;
+    if (next && session.qna_score == null) { setMessage('Enter a QnA score first. A score of 0 is valid, but a blank score cannot open submission.'); return; }
     await patchAttendance(session, { submission_open: next }, { submissionOverride: next ? 'open' : 'closed' }, `Submission access ${next ? 'opened' : 'closed'} on the website and Sheet.`);
   };
 

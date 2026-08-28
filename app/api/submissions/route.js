@@ -66,6 +66,11 @@ export async function POST(request) {
   if (profileResult.error || sessionResult.error) return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
 
   const session = sessionResult.data;
+  const attended = ['on_time', 'late'].includes(session.attendance_status);
+  if (!attended || !session.submission_open || session.qna_score == null) {
+    return NextResponse.json({ error: 'Submission opens only after attendance and a QnA score are recorded.' }, { status: 403 });
+  }
+  if (!session.deadline_at) return NextResponse.json({ error: 'This submission does not have an active deadline.' }, { status: 403 });
   const payload = {
     ...(existingResult.data?.id ? { id: existingResult.data.id } : {}),
     session_id: session.id,
@@ -76,7 +81,7 @@ export async function POST(request) {
     original_file_name: originalFileName,
     stored_file_name: storedFileName,
     file_path: filePath,
-    status: 'submitted',
+    status: new Date() > new Date(session.deadline_at) ? 'late' : 'submitted',
     drive_sync_status: 'pending'
   };
   const submissionResult = existingResult.data?.id

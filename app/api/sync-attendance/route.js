@@ -107,6 +107,7 @@ export async function POST(request) {
       planned_week_start: row.planned_week_start,
       planned_lab_date: row.planned_lab_date || null,
       status: row.status || 'expected',
+      approved_reason: row.approved_reason || null,
       notes: row.notes || null,
       sync_managed: true,
       updated_at: new Date().toISOString()
@@ -129,7 +130,8 @@ export async function POST(request) {
       if (error) result.warnings.push(error.message);
       continue;
     }
-    const submissionOpen = Boolean(group?.submission) && ['on_time', 'late'].includes(status) && clean(row.submission_override) !== 'closed';
+    const qnaScore = row.qna_score === '' || !Number.isFinite(Number(row.qna_score)) ? null : Number(row.qna_score);
+    const submissionOpen = Boolean(group?.submission) && ['on_time', 'late'].includes(status) && qnaScore !== null && clean(row.submission_override) !== 'closed';
     const payload = {
       source_row_key: row.source_key,
       student_id: profile.id,
@@ -144,7 +146,7 @@ export async function POST(request) {
       is_makeup: clean(row.is_makeup) === 'true',
       submission_open: submissionOpen,
       deadline_at: submissionOpen ? dueDate(attendedAt, row.deadline_override) : null,
-      qna_score: row.qna_score === '' || !Number.isFinite(Number(row.qna_score)) ? null : Number(row.qna_score),
+      qna_score: qnaScore,
       notes: row.notes || null,
       sync_managed: true,
       sheet_updated_at: new Date().toISOString()

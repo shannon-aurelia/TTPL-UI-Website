@@ -2767,7 +2767,7 @@ html[data-theme="light"] .home-flow article>span { color: rgba(9,71,89,.42); }
 .timeline-heading { display: grid; grid-template-columns: 1fr minmax(280px,.7fr); gap: 30px; align-items: end; }
 .timeline-heading h2 { margin: 8px 0 0; font-size: clamp(34px,4vw,54px); line-height: 1.02; letter-spacing: -.04em; }
 .timeline-heading p { margin: 0; color: var(--muted); }
-.timeline-phase-grid { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 12px; }
+.timeline-phase-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
 .timeline-phase-grid article { position: relative; min-height: 250px; display: grid; grid-template-rows: auto 1fr; gap: 30px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.045); }
 .timeline-phase-grid article::after { content: ''; position: absolute; top: 44px; left: 54px; right: -13px; height: 2px; background: linear-gradient(90deg,var(--accent),var(--accent-2)); opacity: .5; }
 .timeline-phase-grid article:last-child::after { display: none; }
@@ -2832,6 +2832,28 @@ html[data-theme="light"] .home-flow article>span { color: rgba(9,71,89,.42); }
 .schedule-page-calendar .calendar-day header small { color: var(--muted); }
 .schedule-page-calendar .calendar-day header>span { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; background: rgba(37,217,238,.1); color: var(--accent); font-weight: 850; }
 .student-calendar-card>span { display: grid; }
+.week-navigator { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 0 0 16px; }
+.week-navigator div { min-width: 170px; display: grid; text-align: center; }
+.week-navigator span { color: var(--muted); font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+.week-navigator b { font-size: 22px; }
+.week-navigator button { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--panel-solid); color: var(--fg); cursor: pointer; }
+.schedule-status-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 4px; }
+.schedule-status-legend span { padding: 7px 10px; border-radius: 999px; font-size: 11px; font-weight: 850; }
+.schedule-status-legend .upcoming { background: rgba(160,178,190,.13); color: #c5d1d8; }
+.schedule-status-legend .present { background: rgba(85,230,165,.15); color: #7ff0c0; }
+.schedule-status-legend .missing { background: rgba(255,93,115,.14); color: #ffb0b9; }
+.schedule-status-legend .approved { background: rgba(37,152,255,.15); color: #87c9ff; }
+.student-calendar-card.upcoming { background: rgba(160,178,190,.08); border-color: rgba(160,178,190,.25); }
+.student-calendar-card.present { background: rgba(85,230,165,.12); border-color: rgba(85,230,165,.45); }
+.student-calendar-card.missing { background: rgba(255,93,115,.11); border-color: rgba(255,93,115,.43); }
+.student-calendar-card.approved { background: rgba(37,152,255,.12); border-color: rgba(37,152,255,.45); }
+.schedule-modal-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 18px; background: rgba(0,11,20,.72); backdrop-filter: blur(8px); }
+.schedule-modal { width: min(520px,100%); padding: 26px; }
+.schedule-modal h2 { margin: 8px 0; font-size: 30px; }
+.schedule-modal p { color: var(--muted); line-height: 1.55; }
+.schedule-reason-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 20px 0; }
+.schedule-reason-grid button { min-height: 46px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.05); color: var(--fg); font-weight: 850; cursor: pointer; }
+.schedule-reason-grid button.active { border-color: #56a9ff; background: rgba(37,152,255,.17); color: #a8d5ff; }
 
 html[data-theme="light"] .directory-toolbar input { color: #061525; }
 html[data-theme="light"] .student-edit-grid input,html[data-theme="light"] .student-edit-grid select,html[data-theme="light"] .schedule-workspace-controls input,html[data-theme="light"] .schedule-workspace-controls select,html[data-theme="light"] .schedule-student-picker input { background: #fff; color: #061525; border-color: rgba(8,82,112,.22); }
@@ -2856,7 +2878,8 @@ html[data-theme="light"] .student-edit-grid input,html[data-theme="light"] .stud
   .student-edit-grid,.schedule-workspace-controls { grid-template-columns: 1fr; }
   .schedule-choice-list article { grid-template-columns: 1fr; }
   .schedule-choice-list article>div { grid-template-columns: repeat(5,minmax(54px,1fr)); overflow-x: auto; }
-  .schedule-page-calendar { grid-template-columns: 1fr; overflow: visible; }
+  .schedule-page-calendar { grid-template-columns: repeat(5,minmax(82vw,1fr)); overflow-x: auto; scroll-snap-type: x mandatory; }
+  .schedule-page-calendar .calendar-day { scroll-snap-align: start; }
   .schedule-page-calendar .calendar-day { min-height: 180px; }
 }
 
@@ -2869,4 +2892,10 @@ html[data-theme="light"] .student-edit-grid input,html[data-theme="light"] .stud
   .workspace-page-heading .title { font-size: 42px; }
   .timeline-wrap { padding: 20px; }
   .schedule-choice-list article>div { padding-bottom: 6px; }
+  .home-hero { min-height: auto; padding: 118px 0 84px; align-items: flex-start; }
+  .home-hero-content { padding-top: 0; }
+  .home-hero h1 { margin-top: 20px; font-size: clamp(48px,15vw,68px); line-height: .92; }
+  .home-hero-content>p { font-size: 16px; line-height: 1.55; }
+  .home-actions { margin-top: 24px; }
+  .home-season { margin-top: -20px; }
 }

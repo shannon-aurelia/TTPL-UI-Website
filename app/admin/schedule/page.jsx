@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CalendarDays, ExternalLink, GripVertical, RefreshCw, Search, Users } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, ExternalLink, GripVertical, RefreshCw, Search, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../components/AuthProvider';
 
@@ -26,7 +26,7 @@ function addDays(value, amount) {
 }
 
 function modulesFor(track) {
-  if (track === 'rl') return ['1', '2&3', '4&5', '6', '7', '8'];
+  if (track === 'rl') return ['2&3', '4&5', '6', '7', '8'];
   return ['1', '2', '3', '4', '5', '6', '7', '8'];
 }
 
@@ -39,6 +39,7 @@ export default function SchedulePage() {
   const router = useRouter();
   const [students, setStudents] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [weekStart, setWeekStart] = useState(() => mondayOf(jakartaDate()));
   const [weekNumber, setWeekNumber] = useState('1');
   const [track, setTrack] = useState('rl');
@@ -46,18 +47,21 @@ export default function SchedulePage() {
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(null);
   const isStaff = profile?.role === 'admin' || profile?.role === 'assistant';
 
   const load = useCallback(async () => {
     if (!supabase || !isStaff) return;
-    const [studentResult, planResult] = await Promise.all([
+    const [studentResult, planResult, sessionResult] = await Promise.all([
       supabase.from('profiles').select('id,full_name,npm,email,study_program,is_active').eq('role', 'student').order('full_name'),
-      supabase.from('student_module_plans').select('*, profiles!student_module_plans_student_id_fkey(full_name,npm,email,study_program)').order('planned_lab_date')
+      supabase.from('student_module_plans').select('*, profiles!student_module_plans_student_id_fkey(full_name,npm,email,study_program)').order('planned_lab_date'),
+      supabase.from('practicum_sessions').select('student_id,week_number,report_group,attendance_status,attended_at')
     ]);
     const error = studentResult.error || planResult.error;
     if (error) setMessage(error.message);
     setStudents((studentResult.data || []).filter((student) => student.is_active !== false));
     setPlans(planResult.data || []);
+    setSessions(sessionResult.data || []);
   }, [supabase, isStaff]);
 
   useEffect(() => {
@@ -97,10 +101,11 @@ export default function SchedulePage() {
       module_number: moduleNumber,
       moduleLabel,
       report_group: group,
-      report_label: moduleLabel.includes('&') ? `${track.toUpperCase()} Modules ${moduleLabel} Combined Report` : `${track.toUpperCase()} Module ${moduleLabel} Report`,
+      report_label: `${track.toUpperCase()} Module ${moduleLabel} Report`,
       planned_week_start: weekStart,
       planned_lab_date: plannedDate,
       status: existing?.status || 'expected',
+      approved_reason: existing?.approved_reason || null,
       notes: existing?.notes || ''
     };
     const profileData = student.profiles || student;
@@ -121,6 +126,32 @@ export default function SchedulePage() {
     const response = await fetch('/api/admin-data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` }, body: JSON.stringify({ action: 'deletePlan', source_row_key: plan.source_row_key }) });
     const result = await response.json();
     setMessage(response.ok ? 'Planned date removed. Attendance and submission access were not changed.' : result.error);
+    await load();
+  };
+
+  const shiftWeek = (amount) => {
+    setWeekStart((current) => addDays(current, amount * 7));
+    setWeekNumber((current) => String(Math.max(1, Number(current) + amount)));
+  };
+
+  const cardState = (plan) => {
+    const attended = sessions.some((session) => session.student_id === plan.student_id && session.week_number === plan.week_number && session.report_group === plan.report_group && ['on_time', 'late'].includes(session.attendance_status));
+    if (attended) return 'present';
+    if (plan.status === 'rescheduled' || plan.approved_reason) return 'approved';
+    if (plan.planned_lab_date && plan.planned_lab_date < jakartaDate()) return 'missing';
+    return 'upcoming';
+  };
+
+  const approveMove = async (plan, reason) => {
+    const normalized = reason || null;
+    const existing = plans.find((item) => item.id === plan.id);
+    const payload = { ...existing, status: normalized ? 'rescheduled' : 'expected', approved_reason: normalized, moduleLabel };
+    setPlans((current) => current.map((item) => item.id === plan.id ? { ...item, ...payload } : item));
+    const { data } = await supabase.auth.getSession();
+    const response = await fetch('/api/admin-data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` }, body: JSON.stringify({ action: 'upsertPlan', plan: payload }) });
+    const result = await response.json();
+    setMessage(response.ok ? `${plan.profiles?.full_name} ${normalized ? `marked as an approved move: ${normalized.replace('_', ' ')}` : 'returned to the normal schedule'}.` : result.error);
+    setSelectedPlan(null);
     await load();
   };
 
@@ -145,6 +176,7 @@ export default function SchedulePage() {
       <div className="btn-row"><Link className="btn ghost" href="/admin/students"><Users size={17}/> Students</Link><a className="btn ghost" href={SHEET_URL} target="_blank" rel="noreferrer"><ExternalLink size={17}/> Module Plans Sheet</a><button className="btn" onClick={syncSheet} disabled={syncing}><RefreshCw size={17}/>{syncing ? 'Syncing...' : 'Sync Sheet'}</button></div>
     </div>
     {message && <div className="status-message">{message}</div>}
+    <div className="week-navigator"><button type="button" onClick={() => shiftWeek(-1)} aria-label="Previous week"><ChevronLeft/></button><div><span>Practicum calendar</span><b>Week {weekNumber}</b></div><button type="button" onClick={() => shiftWeek(1)} aria-label="Next week"><ChevronRight/></button></div>
     <div className="card schedule-workspace-controls">
       <label>Week starting<input type="date" value={weekStart} onChange={(event) => setWeekStart(mondayOf(event.target.value))}/></label>
       <label>Practicum<select value={track} onChange={(event) => { const next = event.target.value; setTrack(next); setModuleLabel(modulesFor(next)[0]); }}><option value="rl">RL</option><option value="idp">IDP</option><option value="t3">T3</option></select></label>
@@ -156,7 +188,9 @@ export default function SchedulePage() {
       {query.trim().length < 2 && <p className="muted">Search keeps the list fast even with 140+ students.</p>}
       <div className="schedule-choice-list">{choices.map((student) => <article key={student.id}><span><b>{student.full_name}</b><small>{student.npm || student.email}</small></span><div>{days.map((day) => <button key={day} type="button" onClick={() => savePlan(student, day)}><b>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short' })}</b><small>{day.slice(5)}</small></button>)}</div></article>)}</div>
     </div>
+    <div className="schedule-status-legend"><span className="upcoming">Upcoming</span><span className="present">Present</span><span className="missing">Missed</span><span className="approved">Approved move</span></div>
     <div className="schedule-context"><CalendarDays/><p><b>{track.toUpperCase()} Module {moduleLabel}</b><span>{visiblePlans.length} students planned for this week</span></p></div>
-    <div className="planning-calendar schedule-page-calendar">{days.map((day) => <section className="card calendar-day" key={day} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const plan = plans.find((item) => item.id === event.dataTransfer.getData('text/plain')); if (plan) savePlan(plan, day); }}><header><div><b>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' })}</b><small>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div><span>{visiblePlans.filter((plan) => plan.planned_lab_date === day).length}</span></header>{visiblePlans.filter((plan) => plan.planned_lab_date === day).map((plan) => <div className="student-calendar-card" draggable onDragStart={(event) => event.dataTransfer.setData('text/plain', plan.id)} key={plan.id}><GripVertical size={15}/><span><b>{plan.profiles?.full_name}</b><small>{plan.profiles?.npm || ''}</small></span><button type="button" aria-label={`Remove ${plan.profiles?.full_name}`} onClick={() => removePlan(plan)}>×</button></div>)}</section>)}</div>
+    <div className="planning-calendar schedule-page-calendar">{days.map((day) => <section className="card calendar-day" key={day} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const plan = plans.find((item) => item.id === event.dataTransfer.getData('text/plain')); if (plan) savePlan(plan, day); }}><header><div><b>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' })}</b><small>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div><span>{visiblePlans.filter((plan) => plan.planned_lab_date === day).length}</span></header>{visiblePlans.filter((plan) => plan.planned_lab_date === day).map((plan) => <div className={`student-calendar-card ${cardState(plan)}`} draggable onDragStart={(event) => event.dataTransfer.setData('text/plain', plan.id)} key={plan.id} onClick={() => setSelectedPlan(plan)}><GripVertical size={15}/><span><b>{plan.profiles?.full_name}</b><small>{plan.profiles?.npm || ''}{plan.approved_reason ? ` · ${plan.approved_reason.replace('_', ' ')}` : ''}</small></span><button type="button" aria-label={`Remove ${plan.profiles?.full_name}`} onClick={(event) => { event.stopPropagation(); removePlan(plan); }}>×</button></div>)}</section>)}</div>
+    {selectedPlan && <div className="schedule-modal-backdrop" onClick={() => setSelectedPlan(null)}><div className="card schedule-modal" role="dialog" aria-modal="true" aria-labelledby="schedule-student-name" onClick={(event) => event.stopPropagation()}><div className="eyebrow">Schedule status</div><h2 id="schedule-student-name">{selectedPlan.profiles?.full_name}</h2><p>Choose an approved reason before moving this student to a replacement day. Dragging the card changes the day.</p><div className="schedule-reason-grid">{[['sick','Sick'],['death','Death'],['competition','Competition'],['force_majeure','Force majeure']].map(([value,label]) => <button className={selectedPlan.approved_reason === value ? 'active' : ''} type="button" key={value} onClick={() => approveMove(selectedPlan, value)}>{label}</button>)}</div><div className="btn-row"><button className="btn ghost" type="button" onClick={() => approveMove(selectedPlan, null)}>Clear approval</button><button className="btn" type="button" onClick={() => setSelectedPlan(null)}>Done</button></div></div></div>}
   </section>;
 }
