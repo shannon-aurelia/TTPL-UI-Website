@@ -2,209 +2,157 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { reportGroupFor } from '../../../lib/practicum';
 
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let value = '';
-  let quoted = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    if (character === '"') {
-      if (quoted && text[index + 1] === '"') { value += '"'; index += 1; }
-      else quoted = !quoted;
-    } else if (character === ',' && !quoted) { row.push(value); value = ''; }
-    else if ((character === '\n' || character === '\r') && !quoted) {
-      if (character === '\r' && text[index + 1] === '\n') index += 1;
-      row.push(value); value = '';
-      if (row.some((cell) => cell.trim())) rows.push(row);
-      row = [];
-    } else value += character;
-  }
-  if (value || row.length) { row.push(value); rows.push(row); }
-  const headers = rows.shift().map((header) => header.trim());
-  return rows.map((cells) => Object.fromEntries(headers.map((header, index) => [header, (cells[index] || '').trim()])));
+const clean = (value) => String(value || '').trim().toLowerCase();
+const moduleNumber = (value) => Number(String(value || '').match(/\d+/)?.[0]);
+const enabled = (value) => !['false', '0', 'no', 'inactive'].includes(clean(value));
+
+function attendedDate(date, time) {
+  return date ? new Date(`${date}T${time || '08:00'}:00+07:00`) : null;
 }
 
-function parseModuleNumber(value) {
-  const match = String(value || '').match(/\d+/);
-  return match ? Number(match[0]) : Number.NaN;
-}
-
-function jakartaDate(date, time) {
-  if (!date) return null;
-  return new Date(`${date}T${time || '08:00'}:00+07:00`);
-}
-
-function calculateDeadline(attendanceDate, override) {
+function dueDate(attendedAt, override) {
   if (override) {
-    const normalized = override.trim().replace(' ', 'T');
-    const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
-    const hasSeconds = /T\d{2}:\d{2}:\d{2}/.test(normalized);
-    return new Date(`${normalized}${hasSeconds ? '' : ':00'}${hasZone ? '' : '+07:00'}`).toISOString();
+    const local = String(override).trim().replace(' ', 'T');
+    return new Date(`${local}${/T\d\d:\d\d:\d\d/.test(local) ? '' : ':00'}+07:00`).toISOString();
   }
-  const jakarta = new Date(attendanceDate.getTime() + 7 * 60 * 60 * 1000);
+  const jakarta = new Date(attendedAt.getTime() + 7 * 60 * 60 * 1000);
   jakarta.setUTCDate(jakarta.getUTCDate() + 1);
-  const year = jakarta.getUTCFullYear();
-  const month = String(jakarta.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(jakarta.getUTCDate()).padStart(2, '0');
-  return new Date(`${year}-${month}-${day}T23:59:00+07:00`).toISOString();
+  return new Date(`${jakarta.toISOString().slice(0, 10)}T23:59:00+07:00`).toISOString();
 }
 
-async function authorizeStaff(request, url, anonKey) {
+async function authorized(request, url, anonKey) {
   const syncSecret = request.headers.get('x-sync-secret');
-  if (syncSecret && (
-    syncSecret === process.env.ATTENDANCE_SYNC_SECRET ||
-    syncSecret === process.env.GOOGLE_APPS_SCRIPT_SECRET
-  )) return true;
+  if (syncSecret && [process.env.ATTENDANCE_SYNC_SECRET, process.env.GOOGLE_APPS_SCRIPT_SECRET].includes(syncSecret)) return true;
   const authorization = request.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ')) return false;
-  const token = authorization.slice(7);
   const client = createClient(url, anonKey, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
-  const { data: authData } = await client.auth.getUser(token);
-  if (!authData.user) return false;
-  const { data: profile } = await client.from('profiles').select('role').eq('id', authData.user.id).maybeSingle();
+  const { data } = await client.auth.getUser(authorization.slice(7));
+  if (!data.user) return false;
+  const { data: profile } = await client.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
   return ['assistant', 'admin'].includes(profile?.role);
 }
 
-async function appsScriptRows(action) {
+async function sheetSnapshot() {
   const url = process.env.GOOGLE_APPS_SCRIPT_WEB_APP_URL;
   const secret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
-  if (!url || !secret) return null;
+  if (!url || !secret) throw new Error('Google Sheet bridge is not configured');
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, secret }),
+    body: JSON.stringify({ action: 'syncSnapshot', secret }),
     cache: 'no-store',
-    signal: AbortSignal.timeout(15000)
+    signal: AbortSignal.timeout(20000)
   });
-  if (!response.ok) throw new Error('Could not reach the Google control sheet');
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) throw new Error('Google control sheet returned an invalid response');
-  const body = await response.json();
-  if (body.error) throw new Error(body.error);
-  return body.rows || [];
+  const result = await response.json();
+  if (!response.ok || result.error) throw new Error(result.error || 'Google Sheet sync failed');
+  return result.data || { students: [], attendance: [], plans: [] };
 }
 
 export async function POST(request) {
-  const sheetUrl = process.env.ATTENDANCE_SHEET_CSV_URL;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !anonKey || !serviceKey) return NextResponse.json({ error: 'Missing server configuration' }, { status: 500 });
-  if (!await authorizeStaff(request, supabaseUrl, anonKey)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  let records;
-  let planRecords;
-  try {
-    records = await appsScriptRows('attendanceRows');
-    planRecords = (await appsScriptRows('modulePlanRows') || []).filter((record) => record.source_key && (record.npm || record.email));
-  } catch (error) {
-    return NextResponse.json({ error: error.message || 'Could not synchronize the Google control sheet' }, { status: 502 });
-  }
-  records = (records || []).filter((record) => record.source_key && (record.npm || record.email));
-  if (!records) {
-    if (!sheetUrl) return NextResponse.json({ error: 'Google Sheet connection is not configured' }, { status: 500 });
-    const response = await fetch(sheetUrl, { cache: 'no-store' });
-    if (!response.ok) return NextResponse.json({ error: 'Could not download the attendance CSV' }, { status: 502 });
-    records = parseCsv(await response.text());
-  }
-  const results = [];
+  if (!url || !anonKey || !serviceKey) return NextResponse.json({ error: 'Missing server configuration' }, { status: 500 });
+  if (!await authorized(request, url, anonKey)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  let snapshot;
+  try { snapshot = await sheetSnapshot(); } catch (error) { return NextResponse.json({ error: error.message }, { status: 502 }); }
 
-  for (const record of planRecords) {
-    const profileQuery = record.npm
-      ? supabase.from('profiles').select('id').eq('npm', record.npm).maybeSingle()
-      : supabase.from('profiles').select('id').eq('email', record.email?.toLowerCase()).maybeSingle();
-    const { data: profile } = await profileQuery;
-    if (!profile) { results.push({ source_key: record.source_key, status: 'plan_student_not_found', npm: record.npm }); continue; }
-    const track = record.track.toLowerCase();
-    const moduleNumber = parseModuleNumber(record.module_number);
-    const group = reportGroupFor(track, moduleNumber);
-    const payload = {
-      source_row_key: record.source_key || `plan-${record.npm}-${track}-${record.week_number}-${moduleNumber}`,
-      student_id: profile.id,
-      track,
-      week_number: Number(record.week_number),
-      module_number: moduleNumber,
-      report_group: group?.id || `${track}-${moduleNumber}`,
-      report_label: group?.title || `${track.toUpperCase()} Module ${moduleNumber}`,
-      planned_week_start: record.planned_week_start,
-      planned_lab_date: record.planned_lab_date || null,
-      status: record.status || 'expected',
-      notes: record.notes || null
+  const supabase = createClient(url, serviceKey, { auth: { persistSession: false } });
+  const { data: profiles } = await supabase.from('profiles').select('*');
+  const byId = new Map((profiles || []).map((item) => [item.id, item]));
+  const byEmail = new Map((profiles || []).map((item) => [clean(item.email), item]));
+  const byNpm = new Map((profiles || []).filter((item) => item.npm).map((item) => [clean(item.npm), item]));
+  const byName = new Map((profiles || []).filter((item) => item.full_name).map((item) => [clean(item.full_name), item]));
+  const resolveProfile = (row) => byId.get(row['Account ID']) || byNpm.get(clean(row.npm || row.NPM)) || byEmail.get(clean(row.email || row.Email)) || byName.get(clean(row.full_name || row['Full Name']));
+  const result = { studentsSynced: 0, attendanceSynced: 0, plansSynced: 0, warnings: [] };
+
+  for (const row of snapshot.students || []) {
+    const profile = resolveProfile(row);
+    if (!profile) { result.warnings.push(`Student account not registered: ${row['Full Name'] || row.Email || row.NPM}`); continue; }
+    const update = {
+      full_name: row['Full Name'] || profile.full_name,
+      npm: row.NPM || null,
+      group_name: row.Group || null,
+      study_program: row['Study Program'] || profile.study_program,
+      is_active: enabled(row.Active),
+      sync_managed: true,
+      updated_at: new Date().toISOString()
     };
-    const { error } = await supabase.from('student_module_plans').upsert(payload, { onConflict: 'source_row_key' });
-    results.push({ source_key: payload.source_row_key, status: error ? 'plan_error' : 'plan_synced', error: error?.message });
+    const { error } = await supabase.from('profiles').update(update).eq('id', profile.id);
+    if (error) result.warnings.push(error.message);
+    else { Object.assign(profile, update); result.studentsSynced += 1; }
   }
 
-  const attendanceNpms = [...new Set(records.map((record) => record.npm).filter(Boolean))];
-  const { data: attendanceProfiles } = attendanceNpms.length
-    ? await supabase.from('profiles').select('id,npm').in('npm', attendanceNpms)
-    : { data: [] };
-  const profileByNpm = new Map((attendanceProfiles || []).map((item) => [item.npm, item.id]));
-  const attendancePayloads = [];
-
-  for (const record of records) {
-    const studentId = profileByNpm.get(record.npm);
-    if (!studentId) { results.push({ source_key: record.source_key, status: 'student_not_found', npm: record.npm }); continue; }
-    const track = record.track.toLowerCase();
-    const moduleNumber = parseModuleNumber(record.module_number);
-    const group = reportGroupFor(track, moduleNumber);
-    const attendedAt = jakartaDate(record.attended_date, record.attended_time);
-    if (!attendedAt) { results.push({ source_key: record.source_key, status: 'attendance_date_missing', npm: record.npm }); continue; }
-    const attendanceStatus = (record.attendance_status || 'on_time').toLowerCase();
-    const submissionOpen = group?.submission && ['on_time', 'late'].includes(attendanceStatus) && record.submission_override !== 'closed';
-    const deadlineAt = submissionOpen ? calculateDeadline(attendedAt, record.deadline_override) : null;
-    const sourceKey = record.source_key || `attendance-${record.npm}-${record.attended_date}-${track}-${moduleNumber}`;
+  for (const row of snapshot.plans || []) {
+    const profile = resolveProfile(row);
+    if (!profile || !row.planned_week_start) continue;
+    const track = clean(row.track) || 'rl';
+    const number = moduleNumber(row.module_number);
+    if (!Number.isFinite(number)) continue;
+    const group = reportGroupFor(track, number);
+    const sourceKey = row.source_key || `plan-${profile.id}-${row.report_group || number}-${row.planned_week_start}`;
+    if (clean(row.status) === 'deleted') {
+      const { error } = await supabase.from('student_module_plans').delete().eq('source_row_key', sourceKey);
+      if (error) result.warnings.push(error.message);
+      continue;
+    }
     const payload = {
       source_row_key: sourceKey,
-      student_id: studentId,
-      week_number: Number(record.week_number),
+      student_id: profile.id,
       track,
-      module_number: moduleNumber,
-      report_group: group?.id || `${track}-${moduleNumber}`,
-      report_label: group?.title || `${track.toUpperCase()} Module ${moduleNumber} Report`,
+      week_number: Number(row.week_number) || 1,
+      module_number: number,
+      report_group: row.report_group || group?.id || `${track}-${number}`,
+      report_label: group?.title || `${track.toUpperCase()} Module ${row.module_number}`,
+      planned_week_start: row.planned_week_start,
+      planned_lab_date: row.planned_lab_date || null,
+      status: row.status || 'expected',
+      notes: row.notes || null,
+      sync_managed: true,
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await supabase.from('student_module_plans').upsert(payload, { onConflict: 'source_row_key' });
+    if (error) result.warnings.push(error.message); else result.plansSynced += 1;
+  }
+
+  for (const row of snapshot.attendance || []) {
+    if (!row.source_key) continue;
+    const profile = resolveProfile(row);
+    const number = moduleNumber(row.module_number);
+    const attendedAt = attendedDate(row.attended_date, row.attended_time);
+    if (!profile || !attendedAt || !Number.isFinite(number)) continue;
+    const track = clean(row.track) || 'rl';
+    const group = reportGroupFor(track, number);
+    const status = clean(row.attendance_status) || 'on_time';
+    if (status === 'deleted') {
+      const { error } = await supabase.from('practicum_sessions').delete().eq('source_row_key', row.source_key);
+      if (error) result.warnings.push(error.message);
+      continue;
+    }
+    const submissionOpen = Boolean(group?.submission) && ['on_time', 'late'].includes(status) && clean(row.submission_override) !== 'closed';
+    const payload = {
+      source_row_key: row.source_key,
+      student_id: profile.id,
+      week_number: Number(row.week_number) || 1,
+      track,
+      module_number: number,
+      report_group: group?.id || `${track}-${number}`,
+      report_label: group?.title || `${track.toUpperCase()} Module ${row.module_number} Report`,
       scheduled_at: attendedAt.toISOString(),
-      attendance_status: attendanceStatus,
+      attendance_status: status,
       attended_at: attendedAt.toISOString(),
-      is_makeup: String(record.is_makeup).toLowerCase() === 'true',
-      makeup_for_source_key: record.makeup_for_source_key || null,
-      submission_open: Boolean(submissionOpen),
-      deadline_at: deadlineAt,
-      qna_score: record.qna_score === '' || record.qna_score == null || !Number.isFinite(Number(record.qna_score)) ? null : Number(record.qna_score),
-      notes: record.notes || null,
+      is_makeup: clean(row.is_makeup) === 'true',
+      submission_open: submissionOpen,
+      deadline_at: submissionOpen ? dueDate(attendedAt, row.deadline_override) : null,
+      qna_score: row.qna_score === '' || !Number.isFinite(Number(row.qna_score)) ? null : Number(row.qna_score),
+      notes: row.notes || null,
       sync_managed: true,
       sheet_updated_at: new Date().toISOString()
     };
-    attendancePayloads.push(payload);
+    const { error } = await supabase.from('practicum_sessions').upsert(payload, { onConflict: 'source_row_key' });
+    if (error) result.warnings.push(error.message); else result.attendanceSynced += 1;
   }
 
-  if (attendancePayloads.length) {
-    const { data: syncedSessions, error } = await supabase
-      .from('practicum_sessions')
-      .upsert(attendancePayloads, { onConflict: 'source_row_key' })
-      .select('id,source_row_key,student_id,track,report_group,week_number');
-    if (error) {
-      attendancePayloads.forEach((payload) => results.push({ source_key: payload.source_row_key, status: 'error', error: error.message }));
-    } else {
-      (syncedSessions || []).forEach((session) => results.push({ source_key: session.source_row_key, status: 'synced' }));
-      await Promise.all((syncedSessions || []).map((session) => supabase
-        .from('student_module_plans')
-        .update({ status: 'completed', completed_session_id: session.id })
-        .eq('student_id', session.student_id)
-        .eq('track', session.track)
-        .eq('report_group', session.report_group)
-        .eq('week_number', session.week_number)));
-    }
-  }
-  const sheetKeys = attendancePayloads.map((payload) => payload.source_row_key);
-  let deletionQuery = supabase.from('practicum_sessions').delete().eq('sync_managed', true);
-  if (sheetKeys.length) deletionQuery = deletionQuery.not('source_row_key', 'in', `(${sheetKeys.map((key) => `"${String(key).replaceAll('"', '')}"`).join(',')})`);
-  const { error: deleteError } = await deletionQuery;
-  if (deleteError) results.push({ status: 'delete_reconcile_error', error: deleteError.message });
-  await supabase.from('sheet_sync_runs').insert({ row_count: records.length + planRecords.length, result: results });
-  return NextResponse.json({
-    attendanceSynced: results.filter((item) => item.status === 'synced').length,
-    plansSynced: results.filter((item) => item.status === 'plan_synced').length,
-    results
-  });
+  await supabase.from('sheet_sync_runs').insert({ row_count: result.studentsSynced + result.attendanceSynced + result.plansSynced, result });
+  return NextResponse.json(result);
 }
