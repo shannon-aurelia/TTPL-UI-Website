@@ -86,7 +86,7 @@ export default function SchedulePage() {
   }, [students, query]);
 
   const savePlan = async (student, plannedDate) => {
-    const studentId = student.id || student.student_id;
+    const studentId = student.student_id || student.id;
     const existing = plans.find((plan) => plan.student_id === studentId && plan.report_group === group && plan.planned_week_start === weekStart);
     const moduleNumber = Number(moduleLabel.split('&')[0]);
     const payload = {
