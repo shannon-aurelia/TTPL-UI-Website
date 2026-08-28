@@ -47,6 +47,7 @@ export default function SchedulePage() {
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(null);
   const isStaff = profile?.role === 'admin' || profile?.role === 'assistant';
 
   const load = useCallback(async () => {
@@ -141,19 +142,16 @@ export default function SchedulePage() {
     return 'upcoming';
   };
 
-  const approveMove = async (plan) => {
-    const reason = window.prompt('Approved reason: sick, death, competition, or force_majeure');
-    if (!reason) return;
-    const normalized = reason.trim().toLowerCase().replace(/\s+/g, '_');
-    if (!['sick', 'death', 'competition', 'force_majeure'].includes(normalized)) { setMessage('Choose sick, death, competition, or force majeure.'); return; }
-    const student = { ...plan, id: plan.student_id, student_id: plan.student_id, status: 'rescheduled', approved_reason: normalized };
+  const approveMove = async (plan, reason) => {
+    const normalized = reason || null;
     const existing = plans.find((item) => item.id === plan.id);
-    const payload = { ...existing, status: 'rescheduled', approved_reason: normalized, moduleLabel };
+    const payload = { ...existing, status: normalized ? 'rescheduled' : 'expected', approved_reason: normalized, moduleLabel };
     setPlans((current) => current.map((item) => item.id === plan.id ? { ...item, ...payload } : item));
     const { data } = await supabase.auth.getSession();
     const response = await fetch('/api/admin-data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` }, body: JSON.stringify({ action: 'upsertPlan', plan: payload }) });
     const result = await response.json();
-    setMessage(response.ok ? `${plan.profiles?.full_name} marked as an approved move: ${normalized.replace('_', ' ')}.` : result.error);
+    setMessage(response.ok ? `${plan.profiles?.full_name} ${normalized ? `marked as an approved move: ${normalized.replace('_', ' ')}` : 'returned to the normal schedule'}.` : result.error);
+    setSelectedPlan(null);
     await load();
   };
 
@@ -192,6 +190,7 @@ export default function SchedulePage() {
     </div>
     <div className="schedule-status-legend"><span className="upcoming">Upcoming</span><span className="present">Present</span><span className="missing">Missed</span><span className="approved">Approved move</span></div>
     <div className="schedule-context"><CalendarDays/><p><b>{track.toUpperCase()} Module {moduleLabel}</b><span>{visiblePlans.length} students planned for this week</span></p></div>
-    <div className="planning-calendar schedule-page-calendar">{days.map((day) => <section className="card calendar-day" key={day} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const plan = plans.find((item) => item.id === event.dataTransfer.getData('text/plain')); if (plan) savePlan(plan, day); }}><header><div><b>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' })}</b><small>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div><span>{visiblePlans.filter((plan) => plan.planned_lab_date === day).length}</span></header>{visiblePlans.filter((plan) => plan.planned_lab_date === day).map((plan) => <div className={`student-calendar-card ${cardState(plan)}`} draggable onDragStart={(event) => event.dataTransfer.setData('text/plain', plan.id)} key={plan.id} onClick={() => approveMove(plan)}><GripVertical size={15}/><span><b>{plan.profiles?.full_name}</b><small>{plan.profiles?.npm || ''}{plan.approved_reason ? ` · ${plan.approved_reason.replace('_', ' ')}` : ''}</small></span><button type="button" aria-label={`Remove ${plan.profiles?.full_name}`} onClick={(event) => { event.stopPropagation(); removePlan(plan); }}>×</button></div>)}</section>)}</div>
+    <div className="planning-calendar schedule-page-calendar">{days.map((day) => <section className="card calendar-day" key={day} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const plan = plans.find((item) => item.id === event.dataTransfer.getData('text/plain')); if (plan) savePlan(plan, day); }}><header><div><b>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' })}</b><small>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div><span>{visiblePlans.filter((plan) => plan.planned_lab_date === day).length}</span></header>{visiblePlans.filter((plan) => plan.planned_lab_date === day).map((plan) => <div className={`student-calendar-card ${cardState(plan)}`} draggable onDragStart={(event) => event.dataTransfer.setData('text/plain', plan.id)} key={plan.id} onClick={() => setSelectedPlan(plan)}><GripVertical size={15}/><span><b>{plan.profiles?.full_name}</b><small>{plan.profiles?.npm || ''}{plan.approved_reason ? ` · ${plan.approved_reason.replace('_', ' ')}` : ''}</small></span><button type="button" aria-label={`Remove ${plan.profiles?.full_name}`} onClick={(event) => { event.stopPropagation(); removePlan(plan); }}>×</button></div>)}</section>)}</div>
+    {selectedPlan && <div className="schedule-modal-backdrop" onClick={() => setSelectedPlan(null)}><div className="card schedule-modal" role="dialog" aria-modal="true" aria-labelledby="schedule-student-name" onClick={(event) => event.stopPropagation()}><div className="eyebrow">Schedule status</div><h2 id="schedule-student-name">{selectedPlan.profiles?.full_name}</h2><p>Choose an approved reason before moving this student to a replacement day. Dragging the card changes the day.</p><div className="schedule-reason-grid">{[['sick','Sick'],['death','Death'],['competition','Competition'],['force_majeure','Force majeure']].map(([value,label]) => <button className={selectedPlan.approved_reason === value ? 'active' : ''} type="button" key={value} onClick={() => approveMove(selectedPlan, value)}>{label}</button>)}</div><div className="btn-row"><button className="btn ghost" type="button" onClick={() => approveMove(selectedPlan, null)}>Clear approval</button><button className="btn" type="button" onClick={() => setSelectedPlan(null)}>Done</button></div></div></div>}
   </section>;
 }
