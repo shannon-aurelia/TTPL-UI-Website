@@ -55,7 +55,8 @@ function planRow(plan, profile) {
     status: plan.status || 'expected',
     notes: plan.notes || '',
     source_key: plan.source_row_key,
-    planned_lab_date: plan.planned_lab_date || ''
+    planned_lab_date: plan.planned_lab_date || '',
+    approved_reason: plan.approved_reason || ''
   };
 }
 
