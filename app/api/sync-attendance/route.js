@@ -22,7 +22,7 @@ function dueDate(attendedAt, override) {
 
 async function authorized(request, url, anonKey) {
   const syncSecret = request.headers.get('x-sync-secret');
-  if (syncSecret && [process.env.ATTENDANCE_SYNC_SECRET, process.env.GOOGLE_APPS_SCRIPT_SECRET].includes(syncSecret)) return true;
+  if (syncSecret && [process.env.WEBSITE_SYNC_SECRET, process.env.ATTENDANCE_SYNC_SECRET, process.env.GOOGLE_APPS_SCRIPT_SECRET].includes(syncSecret)) return true;
   const authorization = request.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ')) return false;
   const client = createClient(url, anonKey, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
