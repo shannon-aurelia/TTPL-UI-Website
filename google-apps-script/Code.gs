@@ -168,7 +168,7 @@ function syncWebsiteFromSheet(event) {
   const supported = ['Students', 'QnA Attendance', 'Module Plans'];
   if (event && event.range && supported.indexOf(event.range.getSheet().getName()) === -1) return;
   const config = getConfig();
-  const syncSecret = config.secret || config.websiteSyncSecret;
+  const syncSecret = config.websiteSyncSecret || config.secret;
   if (!config.websiteSyncUrl || !syncSecret) return;
   UrlFetchApp.fetch(config.websiteSyncUrl, {
     method: 'post',
