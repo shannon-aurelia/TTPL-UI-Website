@@ -98,7 +98,7 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
       {visibleSessions.length === 0 && <div className="submission-row"><div><b>No assignment imported yet</b><p>Ask an assistant to sync the current attendance sheet.</p></div></div>}
       {visibleSessions.map((session) => {
         const submitted = submissions.find((item) => item.session_id === session.id);
-        const blocked = !session.submission_open || ['absent', 'excused'].includes(session.attendance_status);
+        const blocked = !session.submission_open || session.qna_score == null || ['absent', 'excused'].includes(session.attendance_status);
         return <div className="submission-row" key={session.id}>
           <div className="submission-main">
             <span className="num">Week {session.week_number}</span>
@@ -108,7 +108,7 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
           </div>
           <div className="submission-action">
             {submitted && <span className="submission-state"><CheckCircle size={17}/> Submitted{Number(submitted.late_penalty) > 0 ? ` · −${submitted.late_penalty} late points` : ''}</span>}
-            {blocked ? <span className="submission-state blocked"><Lock size={17}/> Submission unavailable</span> : <label className="btn upload-label"><Upload size={17}/>{uploading === session.id ? 'Uploading...' : submitted ? 'Replace PDF' : 'Upload PDF'}<input type="file" accept="application/pdf" disabled={uploading === session.id} onChange={(event) => upload(event, session)}/></label>}
+            {blocked ? <span className="submission-state blocked"><Lock size={17}/> {session.qna_score == null ? 'Waiting for QnA score' : 'Submission unavailable'}</span> : <label className="btn upload-label"><Upload size={17}/>{uploading === session.id ? 'Uploading...' : submitted ? 'Replace PDF' : 'Upload PDF'}<input type="file" accept="application/pdf" disabled={uploading === session.id} onChange={(event) => upload(event, session)}/></label>}
           </div>
         </div>;
       })}
