@@ -202,8 +202,9 @@ function reportFolder(config, data) {
   const root = DriveApp.getFolderById(config.folderId);
   const week = Math.max(1, Number(data.weekNumber) || 1);
   const weekFolder = childFolder(root, 'Week ' + String(week).padStart(2, '0'));
-  const trackFolder = childFolder(weekFolder, String(data.track || 'RL').toUpperCase());
-  return childFolder(trackFolder, moduleFolderName(data.reportGroup));
+  const track = String(data.track || 'RL').toUpperCase();
+  const parent = track === 'RL' ? weekFolder : childFolder(weekFolder, track);
+  return childFolder(parent, moduleFolderName(data.reportGroup));
 }
 
 function uploadReport(config, spreadsheet, data) {
