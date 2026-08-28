@@ -2847,6 +2847,13 @@ html[data-theme="light"] .home-flow article>span { color: rgba(9,71,89,.42); }
 .student-calendar-card.present { background: rgba(85,230,165,.12); border-color: rgba(85,230,165,.45); }
 .student-calendar-card.missing { background: rgba(255,93,115,.11); border-color: rgba(255,93,115,.43); }
 .student-calendar-card.approved { background: rgba(37,152,255,.12); border-color: rgba(37,152,255,.45); }
+.schedule-modal-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 18px; background: rgba(0,11,20,.72); backdrop-filter: blur(8px); }
+.schedule-modal { width: min(520px,100%); padding: 26px; }
+.schedule-modal h2 { margin: 8px 0; font-size: 30px; }
+.schedule-modal p { color: var(--muted); line-height: 1.55; }
+.schedule-reason-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 20px 0; }
+.schedule-reason-grid button { min-height: 46px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.05); color: var(--fg); font-weight: 850; cursor: pointer; }
+.schedule-reason-grid button.active { border-color: #56a9ff; background: rgba(37,152,255,.17); color: #a8d5ff; }
 
 html[data-theme="light"] .directory-toolbar input { color: #061525; }
 html[data-theme="light"] .student-edit-grid input,html[data-theme="light"] .student-edit-grid select,html[data-theme="light"] .schedule-workspace-controls input,html[data-theme="light"] .schedule-workspace-controls select,html[data-theme="light"] .schedule-student-picker input { background: #fff; color: #061525; border-color: rgba(8,82,112,.22); }
