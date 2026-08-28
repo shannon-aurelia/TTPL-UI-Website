@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CalendarDays, ChevronDown, ChevronUp, Save, Search, ShieldBan, Trash2, UserRound, Users } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ChevronDown, ChevronUp, Save, Search, Trash2, UserRound, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../components/AuthProvider';
 
