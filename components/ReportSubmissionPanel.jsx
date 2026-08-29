@@ -70,7 +70,11 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
     setMessage(`Submission time reserved at ${formatDate(startResult.uploadStartedAt)}. Uploading PDF...`);
     const { error: storageError } = await supabase.storage.from('practicum-reports').upload(path, file, { upsert: true, contentType: 'application/pdf' });
     if (storageError) {
-      setMessage(storageError.message);
+      await fetch('/api/submissions', {
+        method: 'POST', headers,
+        body: JSON.stringify({ phase: 'failed', sessionId: session.id, filePath: path, originalFileName: file.name, storedFileName: fileName })
+      });
+      setMessage(`Upload failed: ${storageError.message}. Your attempt time was recorded, but the report was not submitted. Please retry.`);
       setUploading('');
       return;
     }
@@ -118,7 +122,9 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
             <p><Clock size={15}/> Deadline: {formatDate(session.deadline_at)}</p>
           </div>
           <div className="submission-action">
-            {submitted && <span className="submission-state"><CheckCircle size={17}/> Submitted{Number(submitted.late_penalty) > 0 ? ` · −${submitted.late_penalty} late points` : ''}</span>}
+            {submitted?.status === 'submitted' && <span className="submission-state"><CheckCircle size={17}/> Submitted{Number(submitted.late_penalty) > 0 ? ` · −${submitted.late_penalty} late points` : ''}</span>}
+            {submitted?.status === 'uploading' && <span className="submission-state"><Clock size={17}/> Upload in progress</span>}
+            {submitted?.status === 'failed' && <span className="submission-state blocked">Previous upload failed · retry</span>}
             {blocked ? <span className="submission-state blocked"><Lock size={17}/> {session.qna_score == null ? 'Waiting for QnA score' : 'Submission unavailable'}</span> : <label className="btn upload-label"><Upload size={17}/>{uploading === session.id ? 'Uploading...' : submitted ? 'Replace PDF' : 'Upload PDF'}<input type="file" accept="application/pdf" disabled={uploading === session.id} onChange={(event) => upload(event, session)}/></label>}
           </div>
         </div>;
