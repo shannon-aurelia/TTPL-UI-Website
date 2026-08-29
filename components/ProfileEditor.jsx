@@ -32,7 +32,7 @@ export default function ProfileEditor() {
     }
     const response = await fetch('/api/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` }, body: JSON.stringify(form) });
     const result = await response.json();
-    setMessage(response.ok ? 'Profile updated.' : result.error);
+    setMessage(response.ok ? (result.sheetSync === 'synced' ? 'Profile updated on the website and Sheet.' : 'Profile updated on the website. Sheet sync will retry on the next synchronization.') : result.error);
     if (response.ok) await refreshProfile();
     setSaving(false);
   };
