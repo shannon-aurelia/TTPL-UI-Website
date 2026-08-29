@@ -40,8 +40,12 @@ export async function PATCH(request) {
   };
   if (!update.full_name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
   const next = { ...current, ...update };
-  try { await sheetStudent(next); } catch (error) { return NextResponse.json({ error: error.message }, { status: 502 }); }
   const { error } = await authClient.from('profiles').update(update).eq('id', data.user.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ profile: next });
+  let sheetSync = 'synced';
+  try { await sheetStudent(next); } catch (error) {
+    sheetSync = 'pending';
+    console.error('[profile] Sheet sync failed', { userId: data.user.id, error: String(error) });
+  }
+  return NextResponse.json({ profile: next, sheetSync });
 }
