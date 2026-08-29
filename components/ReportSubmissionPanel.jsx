@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Clock, Lock, Upload } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { storedFileName } from '../lib/practicum';
@@ -18,9 +18,9 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
   const [uploading, setUploading] = useState('');
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!user || !supabase) return;
-    Promise.all([
+    return Promise.all([
       supabase.from('practicum_sessions').select('*').eq('student_id', user.id).eq('track', track).order('scheduled_at'),
       supabase.from('submissions').select('*').eq('student_id', user.id).eq('track', track)
     ]).then(([sessionResult, submissionResult]) => {
@@ -28,6 +28,17 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
       setSubmissions(submissionResult.data || []);
     });
   }, [user, supabase, track]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!user || !supabase) return undefined;
+    const channel = supabase.channel(`student-submissions-${track}-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'practicum_sessions', filter: `student_id=eq.${user.id}` }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions', filter: `student_id=eq.${user.id}` }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user, supabase, track, load]);
 
   const visibleSessions = useMemo(() => {
     const grouped = new Map();
