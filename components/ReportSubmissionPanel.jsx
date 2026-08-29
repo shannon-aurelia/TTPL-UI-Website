@@ -51,23 +51,34 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
       return;
     }
     setUploading(session.id);
-    setMessage('');
+    setMessage('Reserving your official submission time...');
     const fileName = storedFileName({ name: profile.full_name, npm: profile.npm, reportGroup: session.report_group, weekNumber: session.week_number });
     const path = `${user.id}/${session.track}/${session.report_group}/week-${session.week_number}/${fileName}`;
+    let { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session?.access_token) sessionData = (await supabase.auth.refreshSession()).data;
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token || ''}` };
+    const startResponse = await fetch('/api/submissions', {
+      method: 'POST', headers,
+      body: JSON.stringify({ phase: 'start', sessionId: session.id, filePath: path, originalFileName: file.name, storedFileName: fileName })
+    });
+    const startResult = await startResponse.json();
+    if (!startResponse.ok) {
+      setMessage(startResult.error || 'The upload could not be started.');
+      setUploading('');
+      return;
+    }
+    setMessage(`Submission time reserved at ${formatDate(startResult.uploadStartedAt)}. Uploading PDF...`);
     const { error: storageError } = await supabase.storage.from('practicum-reports').upload(path, file, { upsert: true, contentType: 'application/pdf' });
     if (storageError) {
       setMessage(storageError.message);
       setUploading('');
       return;
     }
-    const { data: sessionData } = await supabase.auth.getSession();
     const response = await fetch('/api/submissions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${sessionData.session?.access_token || ''}`
-      },
+      headers,
       body: JSON.stringify({
+        phase: 'complete',
         sessionId: session.id,
         filePath: path,
         originalFileName: file.name,
@@ -80,7 +91,7 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
     } else {
       const existing = submissions.find((item) => item.session_id === session.id);
       setSubmissions((current) => existing ? current.map((item) => item.id === existing.id ? result.submission : item) : [...current, result.submission]);
-      setMessage(result.driveSync === 'synced' ? `${fileName} has been received and archived.` : `${fileName} has been received. Drive archiving is pending.`);
+      setMessage(`${fileName} has been received. Its on-time status uses the reserved start time; Drive archiving is continuing in the background.`);
     }
     setUploading('');
   };
