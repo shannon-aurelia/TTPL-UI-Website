@@ -84,7 +84,7 @@ export async function POST(request) {
     original_file_name: originalFileName,
     stored_file_name: storedFileName,
     file_path: filePath,
-    status: phase === 'start' ? 'uploading' : 'submitted',
+    status: phase === 'start' ? 'uploading' : phase === 'failed' ? 'failed' : 'submitted',
     drive_sync_status: 'pending'
   };
   const submissionResult = existingResult.data?.id
@@ -96,6 +96,9 @@ export async function POST(request) {
   // database trigger records its server timestamp as the official submission time.
   if (phase === 'start') {
     return NextResponse.json({ submission: submissionResult.data, uploadStartedAt: submissionResult.data.submitted_at });
+  }
+  if (phase === 'failed') {
+    return NextResponse.json({ submission: submissionResult.data });
   }
 
   const enriched = {
