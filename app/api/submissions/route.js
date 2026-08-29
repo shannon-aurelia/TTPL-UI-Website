@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 
 function userClient(authorization) {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
@@ -55,7 +55,7 @@ export async function POST(request) {
   if (authError || !authData.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json();
-  const { sessionId, filePath, originalFileName, storedFileName } = body;
+  const { phase = 'complete', sessionId, filePath, originalFileName, storedFileName } = body;
   if (!sessionId || !filePath || !originalFileName || !storedFileName) return NextResponse.json({ error: 'Missing submission details' }, { status: 400 });
 
   const [profileResult, sessionResult, existingResult] = await Promise.all([
@@ -84,7 +84,7 @@ export async function POST(request) {
     original_file_name: originalFileName,
     stored_file_name: storedFileName,
     file_path: filePath,
-    status: new Date() > new Date(session.deadline_at) ? 'late' : 'submitted',
+    status: phase === 'start' ? 'uploading' : 'submitted',
     drive_sync_status: 'pending'
   };
   const submissionResult = existingResult.data?.id
@@ -92,25 +92,35 @@ export async function POST(request) {
     : await supabase.from('submissions').insert(payload).select().single();
   if (submissionResult.error) return NextResponse.json({ error: submissionResult.error.message }, { status: 400 });
 
+  // The start response is deliberately returned before the PDF transfer begins. The
+  // database trigger records its server timestamp as the official submission time.
+  if (phase === 'start') {
+    return NextResponse.json({ submission: submissionResult.data, uploadStartedAt: submissionResult.data.submitted_at });
+  }
+
   const enriched = {
     ...submissionResult.data,
     lab_date: session.attended_at || session.scheduled_at,
     deadline_at: session.deadline_at
   };
-  try {
+  after(async () => {
+    try {
     const { data: fileData, error: fileError } = await supabase.storage.from('practicum-reports').download(filePath);
     if (fileError) throw fileError;
     const drive = await sendToDrive(fileData, enriched, profileResult.data);
-    if (drive.pending) return NextResponse.json({ submission: submissionResult.data, driveSync: 'pending' });
+    if (drive.pending) return;
     const { data: updated, error: updateError } = await supabase.from('submissions').update({
       drive_file_id: drive.fileId,
       drive_file_url: drive.fileUrl,
       drive_sync_status: 'synced'
     }).eq('id', submissionResult.data.id).select().single();
     if (updateError) throw updateError;
-    return NextResponse.json({ submission: updated, driveSync: 'synced' });
+    if (!updated) throw new Error('Drive sync result could not be saved');
   } catch (error) {
     await supabase.from('submissions').update({ drive_sync_status: 'failed' }).eq('id', submissionResult.data.id);
-    return NextResponse.json({ submission: submissionResult.data, driveSync: 'failed', warning: error.message });
+    console.error('[submissions] Drive archive failed', { submissionId: submissionResult.data.id, error: String(error) });
   }
+  });
+
+  return NextResponse.json({ submission: submissionResult.data, driveSync: 'pending' });
 }
