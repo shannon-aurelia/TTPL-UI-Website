@@ -41,7 +41,7 @@ function moduleLabel(item) {
 }
 
 function moduleOptions(track) {
-  if (track === 'rl') return [
+  if (track === 'rl' || track === 'idp') return [
     ['1', '1 · Pre-test'],
     ['2&3', '2&3 · Combined'],
     ['4&5', '4&5 · Combined'],
@@ -454,7 +454,7 @@ export default function AdminPage() {
       <form className="card batch-attendance" id="attendance-records" onSubmit={saveToday}>
         <div className="batch-heading"><div><div className="eyebrow">Step 1</div><h2>Set today’s session</h2></div><b>{selectedCount} selected</b></div>
         <div className="batch-session-grid">
-          <label>Track<select value={attendance.track} onChange={(event) => setAttendance({ ...attendance, track: event.target.value, module: event.target.value === 'rl' ? '2&3' : '1' })}><option value="rl">RL</option><option value="idp">IDP</option><option value="t3">T3</option></select></label>
+          <label>Track<select value={attendance.track} onChange={(event) => setAttendance({ ...attendance, track: event.target.value, module: ['rl', 'idp'].includes(event.target.value) ? '2&3' : '1' })}><option value="rl">RL</option><option value="idp">IDP</option><option value="t3">T3</option></select></label>
           <label>Module<select value={attendance.module} onChange={(event) => setAttendance({ ...attendance, module: event.target.value })}>{moduleOptions(attendance.track).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>Week<input type="number" min="1" value={attendance.week_number} onChange={(event) => setAttendance({ ...attendance, week_number: event.target.value })}/></label>
           <label>Date<input type="date" value={attendance.attended_date} onChange={(event) => setAttendance({ ...attendance, attended_date: event.target.value })}/></label>

@@ -26,7 +26,7 @@ function addDays(value, amount) {
 }
 
 function modulesFor(track) {
-  if (track === 'rl') return ['2&3', '4&5', '6', '7', '8'];
+  if (track === 'rl' || track === 'idp') return ['2&3', '4&5', '6', '7', '8'];
   return ['1', '2', '3', '4', '5', '6', '7', '8'];
 }
 
