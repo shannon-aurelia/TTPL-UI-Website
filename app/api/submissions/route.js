@@ -66,6 +66,9 @@ export async function POST(request) {
   if (profileResult.error || sessionResult.error) return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
 
   const session = sessionResult.data;
+  if (!['rl', 'idp'].includes(session.track)) {
+    return NextResponse.json({ error: 'Report submission is available only for RL and IDP.' }, { status: 403 });
+  }
   const attended = ['on_time', 'late'].includes(session.attendance_status);
   if (!attended || !session.submission_open || session.qna_score == null) {
     return NextResponse.json({ error: 'Submission opens only after attendance and a QnA score are recorded.' }, { status: 403 });

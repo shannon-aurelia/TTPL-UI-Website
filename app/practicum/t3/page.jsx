@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import ReportSubmissionPanel from '../../../components/ReportSubmissionPanel';
 
 const pdf = '/modules/modul-teknik-tegangan-arus-tinggi-2022.pdf';
 const modules = [
@@ -31,7 +30,7 @@ export default function Page() {
     </aside>
     <div>
       <h1 className="title">High Voltage & High Current</h1>
-      <p className="subtitle">Modules, videos, rules, pre-test/post-test checkpoints, and submission links for this track.</p>
+      <p className="subtitle">Modules, videos, rules, and pre-test/post-test checkpoints for this track. Report submission is managed only for RL and IDP.</p>
       <div className="module-grid">{modules.map((module, index) => <div className="module-card" key={module}>
         <div className="num">Module {index + 1}</div>
         <h3>{module}</h3>
@@ -39,7 +38,6 @@ export default function Page() {
         <Link className="chip" href={readerHref(index + 1, module)}>Read PDF</Link>
         <a className="chip" href="https://www.youtube.com/@ttplftui" target="_blank">Video</a>
       </div>)}</div>
-      <ReportSubmissionPanel track="t3" />
     </div>
   </section>;
 }

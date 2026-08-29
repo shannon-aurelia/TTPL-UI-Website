@@ -194,7 +194,7 @@ function moduleFolderName(reportGroup) {
   const value = String(reportGroup || '').toLowerCase().replace(/\s/g, '');
   if (value.indexOf('2-3') !== -1 || value.indexOf('2&3') !== -1 || value.indexOf('23') !== -1) return 'Module 2&3';
   if (value.indexOf('4-5') !== -1 || value.indexOf('4&5') !== -1 || value.indexOf('45') !== -1) return 'Module 4&5';
-  const moduleNumber = value.match(/(?:module|modul|m)?[-_]?([678])(?:$|\D)/);
+  const moduleNumber = value.match(/(?:module|modul|m)?[-_]?([1-8])(?:$|\D)/);
   return moduleNumber ? 'Module ' + moduleNumber[1] : 'Other';
 }
 
@@ -203,7 +203,8 @@ function reportFolder(config, data) {
   const week = Math.max(1, Number(data.weekNumber) || 1);
   const weekFolder = childFolder(root, 'Week ' + String(week).padStart(2, '0'));
   const track = String(data.track || 'RL').toUpperCase();
-  const parent = track === 'RL' ? weekFolder : childFolder(weekFolder, track);
+  if (track !== 'RL' && track !== 'IDP') throw new Error('Report submission is available only for RL and IDP');
+  const parent = childFolder(weekFolder, track);
   return childFolder(parent, moduleFolderName(data.reportGroup));
 }
 
