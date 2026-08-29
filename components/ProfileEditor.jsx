@@ -20,8 +20,17 @@ export default function ProfileEditor() {
     event.preventDefault();
     setSaving(true);
     setMessage('Saving...');
-    const { data } = await supabase.auth.getSession();
-    const response = await fetch('/api/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` }, body: JSON.stringify(form) });
+    let { data } = await supabase.auth.getSession();
+    if (!data.session?.access_token) {
+      const refreshed = await supabase.auth.refreshSession();
+      data = refreshed.data;
+    }
+    if (!data.session?.access_token) {
+      setMessage('Your session expired. Sign in again, then retry.');
+      setSaving(false);
+      return;
+    }
+    const response = await fetch('/api/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` }, body: JSON.stringify(form) });
     const result = await response.json();
     setMessage(response.ok ? 'Profile updated.' : result.error);
     if (response.ok) await refreshProfile();

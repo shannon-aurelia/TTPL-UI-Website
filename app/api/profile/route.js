@@ -24,13 +24,12 @@ export async function PATCH(request) {
   const authorization = request.headers.get('authorization');
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !anonKey || !serviceKey || !authorization?.startsWith('Bearer ')) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!url || !anonKey || !authorization?.startsWith('Bearer ')) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const authClient = createClient(url, anonKey, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
   const { data } = await authClient.auth.getUser(authorization.slice(7));
   if (!data.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const supabase = createClient(url, serviceKey, { auth: { persistSession: false } });
-  const { data: current } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
+  const { data: current, error: profileError } = await authClient.from('profiles').select('*').eq('id', data.user.id).single();
+  if (profileError || !current) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
   const body = await request.json();
   const update = {
     full_name: String(body.full_name || '').trim(),
@@ -42,7 +41,7 @@ export async function PATCH(request) {
   if (!update.full_name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
   const next = { ...current, ...update };
   try { await sheetStudent(next); } catch (error) { return NextResponse.json({ error: error.message }, { status: 502 }); }
-  const { error } = await supabase.from('profiles').update(update).eq('id', data.user.id);
+  const { error } = await authClient.from('profiles').update(update).eq('id', data.user.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ profile: next });
 }
