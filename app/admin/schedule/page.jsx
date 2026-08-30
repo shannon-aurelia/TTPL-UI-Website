@@ -158,7 +158,9 @@ export default function SchedulePage() {
   const syncSheet = async () => {
     setSyncing(true);
     setMessage('Reading student and schedule changes from the Sheet...');
-    const { data } = await supabase.auth.getSession();
+    let { data } = await supabase.auth.getSession();
+    if (!data.session?.access_token) data = (await supabase.auth.refreshSession()).data;
+    if (!data.session?.access_token) { setMessage('Your session expired. Sign in again, then retry.'); setSyncing(false); return; }
     const response = await fetch('/api/sync-attendance', { method: 'POST', headers: { Authorization: `Bearer ${data.session?.access_token || ''}` } });
     const result = await response.json();
     setMessage(response.ok ? `${result.studentsSynced} students and ${result.plansSynced} plans synchronized from Sheets.` : result.error);
