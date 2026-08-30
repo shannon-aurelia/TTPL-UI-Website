@@ -55,7 +55,13 @@ export async function POST(request) {
   if (!url || !anonKey || !serviceKey) return NextResponse.json({ error: 'Missing server configuration' }, { status: 500 });
   if (!await authorized(request, url, anonKey)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   let snapshot;
-  try { snapshot = await sheetSnapshot(); } catch (error) { return NextResponse.json({ error: error.message }, { status: 502 }); }
+  try { snapshot = await sheetSnapshot(); } catch (error) {
+    const message = error.message === 'Unauthorized'
+      ? 'Google Sheet bridge rejected its service key. Your website login is valid; the Google service configuration needs repair.'
+      : error.message;
+    console.error('[sync-attendance] Sheet snapshot failed', { error: String(error) });
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
 
   const supabase = createClient(url, serviceKey, { auth: { persistSession: false } });
   const { data: profiles } = await supabase.from('profiles').select('*');
