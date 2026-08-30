@@ -215,40 +215,29 @@ export default function AdminPage() {
           assistantCode: ''
         };
       });
-    const sheetRequest = fetch('/api/attendance', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionData.session?.access_token || ''}`
-        },
-        body: JSON.stringify({ entries: sheetEntries })
-      });
-    const databaseRequest = supabase.rpc('staff_record_attendance_batch', { entries });
-    const [sheetResponse, databaseResult] = await Promise.all([sheetRequest, databaseRequest]);
-    let sheetResult = {};
-    try { sheetResult = await sheetResponse.json(); } catch { sheetResult = { error: 'Invalid response from Google Sheets' }; }
-    const databaseError = databaseResult.error;
-
-    if (!sheetResponse.ok || databaseError) {
-      if (!sheetResponse.ok && !databaseError) {
-        await supabase.from('practicum_sessions').delete().in('source_row_key', entries.map((entry) => entry.source_row_key));
-      }
-      if (sheetResponse.ok && databaseError) {
-        await fetch('/api/attendance', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token || ''}` },
-          body: JSON.stringify({ sourceKeys: entries.map((entry) => entry.source_row_key) })
-        });
-      }
-      setMessage(`Nothing was kept because both systems did not confirm the save. ${sheetResult.error || databaseError?.message || 'Please try again.'}`);
+    const databaseResult = await supabase.rpc('staff_record_attendance_batch', { entries });
+    if (databaseResult.error) {
+      setMessage(`Attendance was not saved: ${databaseResult.error.message}`);
       await load();
-    } else {
-      setMessage(`${databaseResult.data || selectedCount} students saved to the website and Google Sheet.`);
-      setSelected({});
-      setStudentQuery('');
-      setQuery('');
-      await load();
+      setSaving(false);
+      return;
     }
+    setMessage(`${databaseResult.data || selectedCount} students saved instantly. Google Sheet synchronization is continuing automatically...`);
+    setSelected({});
+    setStudentQuery('');
+    setQuery('');
+    await load();
+    fetch('/api/attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token || ''}` },
+      body: JSON.stringify({ entries: sheetEntries })
+    }).then(async (sheetResponse) => {
+      let sheetResult = {};
+      try { sheetResult = await sheetResponse.json(); } catch { sheetResult = { error: 'Invalid response from Google Sheets' }; }
+      setMessage(sheetResponse.ok
+        ? `${databaseResult.data || selectedCount} students saved and confirmed in Google Sheets.`
+        : `${databaseResult.data || selectedCount} students are safely saved on the website. Sheet delivery is pending: ${sheetResult.error || 'Google service unavailable'}`);
+    }).catch(() => setMessage(`${databaseResult.data || selectedCount} students are safely saved on the website. Sheet delivery will need a retry when Google is reachable.`));
     setSaving(false);
   };
 
@@ -319,16 +308,18 @@ export default function AdminPage() {
   const patchAttendance = async (session, changes, sheetChanges, successMessage) => {
     setSessions((current) => current.map((item) => item.id === session.id ? { ...item, ...changes } : item));
     const { data: auth } = await supabase.auth.getSession();
-    const response = await fetch('/api/attendance', {
+    const { error } = await supabase.from('practicum_sessions').update({ ...changes, sheet_updated_at: new Date().toISOString() }).eq('id', session.id);
+    if (error) { setMessage(`Nothing changed: ${error.message}`); await load(); return; }
+    setMessage(`${successMessage} Google Sheet synchronization is continuing automatically...`);
+    await load();
+    fetch('/api/attendance', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.session?.access_token || ''}` },
       body: JSON.stringify({ entry: { sourceKey: session.source_row_key, ...sheetChanges } })
-    });
-    const result = await response.json();
-    if (!response.ok) { setMessage(`Nothing changed. Google Sheet connection failed: ${result.error || 'unknown error'}`); await load(); return; }
-    const { error } = await supabase.from('practicum_sessions').update({ ...changes, sheet_updated_at: new Date().toISOString() }).eq('id', session.id);
-    setMessage(error ? `The Sheet changed, but the website needs a sync: ${error.message}` : successMessage);
-    await load();
+    }).then(async (response) => {
+      const result = await response.json().catch(() => ({}));
+      setMessage(response.ok ? `${successMessage} Google Sheets confirmed the update.` : `${successMessage} The website is current; Sheet delivery is pending: ${result.error || 'Google service unavailable'}`);
+    }).catch(() => setMessage(`${successMessage} The website is current; Sheet delivery will retry when Google is reachable.`));
   };
 
   const updateDeadline = async (session, value) => {

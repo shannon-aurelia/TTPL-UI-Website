@@ -44,6 +44,7 @@ export default function SchedulePage() {
   const [weekNumber, setWeekNumber] = useState('1');
   const [track, setTrack] = useState('rl');
   const [moduleLabel, setModuleLabel] = useState('2&3');
+  const [plannedTime, setPlannedTime] = useState('15:00');
   const [query, setQuery] = useState('');
   const [message, setMessage] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -82,7 +83,7 @@ export default function SchedulePage() {
 
   const days = useMemo(() => Array.from({ length: 5 }, (_, index) => addDays(weekStart, index)), [weekStart]);
   const group = reportGroup(track, moduleLabel);
-  const visiblePlans = useMemo(() => plans.filter((plan) => plan.track === track && plan.report_group === group && days.includes(plan.planned_lab_date)), [plans, track, group, days]);
+  const visiblePlans = useMemo(() => plans.filter((plan) => plan.track === track && days.includes(plan.planned_lab_date)), [plans, track, days]);
   const choices = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (needle.length < 2) return [];
@@ -104,6 +105,7 @@ export default function SchedulePage() {
       report_label: `${track.toUpperCase()} Module ${moduleLabel} Report`,
       planned_week_start: weekStart,
       planned_lab_date: plannedDate,
+      planned_start_time: plannedTime,
       status: existing?.status || 'expected',
       approved_reason: existing?.approved_reason || null,
       notes: existing?.notes || ''
@@ -184,6 +186,7 @@ export default function SchedulePage() {
       <label>Practicum<select value={track} onChange={(event) => { const next = event.target.value; setTrack(next); setModuleLabel(modulesFor(next)[0]); }}><option value="rl">RL</option><option value="idp">IDP</option><option value="t3">T3</option></select></label>
       <label>Module<select value={moduleLabel} onChange={(event) => setModuleLabel(event.target.value)}>{modulesFor(track).map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       <label>Practicum week<input type="number" min="1" value={weekNumber} onChange={(event) => setWeekNumber(event.target.value)}/></label>
+      <label>Start time<input type="time" value={plannedTime} onChange={(event) => setPlannedTime(event.target.value)}/></label>
     </div>
     <div className="card schedule-student-picker">
       <div><Search/><label><b>Add a student</b><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Type at least 2 characters"/></label></div>
@@ -191,8 +194,8 @@ export default function SchedulePage() {
       <div className="schedule-choice-list">{choices.map((student) => <article key={student.id}><span><b>{student.full_name}</b><small>{student.npm || student.email}</small></span><div>{days.map((day) => <button key={day} type="button" onClick={() => savePlan(student, day)}><b>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short' })}</b><small>{day.slice(5)}</small></button>)}</div></article>)}</div>
     </div>
     <div className="schedule-status-legend"><span className="upcoming">Upcoming</span><span className="present">Present</span><span className="missing">Missed</span><span className="approved">Approved move</span></div>
-    <div className="schedule-context"><CalendarDays/><p><b>{track.toUpperCase()} Module {moduleLabel}</b><span>{visiblePlans.length} students planned for this week</span></p></div>
-    <div className="planning-calendar schedule-page-calendar">{days.map((day) => <section className="card calendar-day" key={day} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const plan = plans.find((item) => item.id === event.dataTransfer.getData('text/plain')); if (plan) savePlan(plan, day); }}><header><div><b>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' })}</b><small>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div><span>{visiblePlans.filter((plan) => plan.planned_lab_date === day).length}</span></header>{visiblePlans.filter((plan) => plan.planned_lab_date === day).map((plan) => <div className={`student-calendar-card ${cardState(plan)}`} draggable onDragStart={(event) => event.dataTransfer.setData('text/plain', plan.id)} key={plan.id} onClick={() => setSelectedPlan(plan)}><GripVertical size={15}/><span><b>{plan.profiles?.full_name}</b><small>{plan.profiles?.npm || ''}{plan.approved_reason ? ` · ${plan.approved_reason.replace('_', ' ')}` : ''}</small></span><button type="button" aria-label={`Remove ${plan.profiles?.full_name}`} onClick={(event) => { event.stopPropagation(); removePlan(plan); }}>×</button></div>)}</section>)}</div>
+    <div className="schedule-context"><CalendarDays/><p><b>{track.toUpperCase()} · all modules</b><span>{visiblePlans.length} student-module assignments this week · new assignments use Module {moduleLabel}</span></p></div>
+    <div className="planning-calendar schedule-page-calendar">{days.map((day) => <section className="card calendar-day" key={day} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const plan = plans.find((item) => item.id === event.dataTransfer.getData('text/plain')); if (plan) savePlan(plan, day); }}><header><div><b>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' })}</b><small>{new Date(`${day}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div><span>{visiblePlans.filter((plan) => plan.planned_lab_date === day).length}</span></header>{visiblePlans.filter((plan) => plan.planned_lab_date === day).map((plan) => <div className={`student-calendar-card ${cardState(plan)}`} draggable onDragStart={(event) => event.dataTransfer.setData('text/plain', plan.id)} key={plan.id} onClick={() => setSelectedPlan(plan)}><GripVertical size={15}/><span><b>{plan.profiles?.full_name}</b><small>Module {plan.report_group?.split('-').slice(1).join('&')} · {String(plan.planned_start_time || '15:00').slice(0, 5)}{plan.approved_reason ? ` · ${plan.approved_reason.replace('_', ' ')}` : ''}</small></span><button type="button" aria-label={`Remove ${plan.profiles?.full_name}`} onClick={(event) => { event.stopPropagation(); removePlan(plan); }}>×</button></div>)}</section>)}</div>
     {selectedPlan && <div className="schedule-modal-backdrop" onClick={() => setSelectedPlan(null)}><div className="card schedule-modal" role="dialog" aria-modal="true" aria-labelledby="schedule-student-name" onClick={(event) => event.stopPropagation()}><div className="eyebrow">Schedule status</div><h2 id="schedule-student-name">{selectedPlan.profiles?.full_name}</h2><p>Choose an approved reason before moving this student to a replacement day. Dragging the card changes the day.</p><div className="schedule-reason-grid">{[['sick','Sick'],['death','Death'],['competition','Competition'],['force_majeure','Force majeure']].map(([value,label]) => <button className={selectedPlan.approved_reason === value ? 'active' : ''} type="button" key={value} onClick={() => approveMove(selectedPlan, value)}>{label}</button>)}</div><div className="btn-row"><button className="btn ghost" type="button" onClick={() => approveMove(selectedPlan, null)}>Clear approval</button><button className="btn" type="button" onClick={() => setSelectedPlan(null)}>Done</button></div></div></div>}
   </section>;
 }

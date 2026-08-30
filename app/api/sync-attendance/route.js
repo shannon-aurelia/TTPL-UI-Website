@@ -112,6 +112,7 @@ export async function POST(request) {
       report_label: group?.title || `${track.toUpperCase()} Module ${row.module_number}`,
       planned_week_start: row.planned_week_start,
       planned_lab_date: row.planned_lab_date || null,
+      planned_start_time: row.planned_start_time || '15:00',
       status: row.status || 'expected',
       approved_reason: row.approved_reason || null,
       notes: row.notes || null,

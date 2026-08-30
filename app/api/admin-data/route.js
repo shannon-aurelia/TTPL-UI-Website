@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 
 async function staff(request) {
   const authorization = request.headers.get('authorization');
@@ -56,6 +56,7 @@ function planRow(plan, profile) {
     notes: plan.notes || '',
     source_key: plan.source_row_key,
     planned_lab_date: plan.planned_lab_date || '',
+    planned_start_time: plan.planned_start_time || '15:00',
     approved_reason: plan.approved_reason || ''
   };
 }
@@ -82,10 +83,10 @@ export async function POST(request) {
         updated_at: new Date().toISOString()
       };
       const next = { ...current, ...update };
-      await sheet('upsertStudent', studentRow(next));
       const { error } = await supabase.from('profiles').update(update).eq('id', body.id);
       if (error) throw error;
-      return NextResponse.json({ saved: true, profile: next });
+      after(async () => { try { await sheet('upsertStudent', studentRow(next)); } catch (error) { console.error('[admin-data] Student Sheet sync pending', { id: body.id, error: String(error) }); } });
+      return NextResponse.json({ saved: true, profile: next, sheetSync: 'pending' });
     }
     if (body.action === 'deleteStudent') {
       if (actor.profile.role !== 'admin') return NextResponse.json({ error: 'Administrator access required' }, { status: 403 });
@@ -98,17 +99,17 @@ export async function POST(request) {
     }
     if (body.action === 'upsertPlan') {
       const { data: profile } = await supabase.from('profiles').select('full_name,npm,email').eq('id', body.plan.student_id).single();
-      await sheet('upsertPlan', planRow(body.plan, profile));
       const payload = { ...body.plan, moduleLabel: undefined, sync_managed: true, updated_at: new Date().toISOString() };
       const { error } = await supabase.from('student_module_plans').upsert(payload, { onConflict: 'source_row_key' });
       if (error) throw error;
-      return NextResponse.json({ saved: true });
+      after(async () => { try { await sheet('upsertPlan', planRow(body.plan, profile)); } catch (error) { console.error('[admin-data] Plan Sheet sync pending', { sourceKey: body.plan.source_row_key, error: String(error) }); } });
+      return NextResponse.json({ saved: true, sheetSync: 'pending' });
     }
     if (body.action === 'deletePlan') {
-      await sheet('deletePlan', { source_key: body.source_row_key });
       const { error } = await supabase.from('student_module_plans').delete().eq('source_row_key', body.source_row_key);
       if (error) throw error;
-      return NextResponse.json({ deleted: true });
+      after(async () => { try { await sheet('deletePlan', { source_key: body.source_row_key }); } catch (error) { console.error('[admin-data] Plan Sheet delete pending', { sourceKey: body.source_row_key, error: String(error) }); } });
+      return NextResponse.json({ deleted: true, sheetSync: 'pending' });
     }
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (error) {
