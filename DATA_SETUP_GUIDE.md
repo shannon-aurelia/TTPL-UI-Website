@@ -101,7 +101,7 @@ Full_Name_NPM_Report_Group_WeekN.pdf
 
 The file is stored privately in the `practicum-reports` bucket. Students can access only their own folder. Staff can access all reports through signed URLs.
 
-Only PDF files up to 20 MB are accepted. The database records the submission time and late penalty, so those values cannot be changed from the browser.
+Only PDF files up to 30 MB are accepted. The database records the upload-start time and accepts it only after the PDF finishes uploading, so those values cannot be changed from the browser.
 
 ## 8. Late penalty
 
