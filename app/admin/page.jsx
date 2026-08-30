@@ -254,7 +254,9 @@ export default function AdminPage() {
 
   const syncSheet = async () => {
     setSyncing(true);
-    const { data } = await supabase.auth.getSession();
+    let { data } = await supabase.auth.getSession();
+    if (!data.session?.access_token) data = (await supabase.auth.refreshSession()).data;
+    if (!data.session?.access_token) { setMessage('Your session expired. Sign in again, then retry.'); setSyncing(false); return; }
     const response = await fetch('/api/sync-attendance', { method: 'POST', headers: { Authorization: `Bearer ${data.session?.access_token || ''}` } });
     const result = await response.json();
     setMessage(response.ok ? `${result.studentsSynced} students, ${result.attendanceSynced} attendance rows, and ${result.plansSynced} plans synchronized.` : result.error);
@@ -421,6 +423,7 @@ export default function AdminPage() {
     <div className="dashboard-heading">
       <div><div className="eyebrow">Practicum administration</div><h1 className="title">Today’s lab desk.</h1><p className="subtitle">Choose today’s session, mark everyone who came, enter their QnA scores, then save the group once.</p></div>
       <div className="btn-row">
+        <Link className="btn" href="/admin/schedule"><CalendarDays size={17}/> Open schedule calendar</Link>
         <a className="btn ghost" href={SHEET_URL} target="_blank" rel="noreferrer"><ExternalLink size={17}/> Open source Sheet</a>
         <Link className="btn ghost" href="/reading-analytics"><BookOpenCheck size={17}/> Reading analytics</Link>
         <button className="btn" onClick={syncSheet} disabled={syncing}><RefreshCw size={17}/> {syncing ? 'Syncing...' : 'Sync Sheet'}</button>
