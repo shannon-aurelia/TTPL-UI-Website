@@ -73,6 +73,8 @@ export async function POST(request) {
   const result = { studentsSynced: 0, attendanceSynced: 0, plansSynced: 0, warnings: [] };
 
   for (const row of snapshot.students || []) {
+    const hasIdentity = row['Account ID'] || row.NPM || row.npm || row.Email || row.email || row['Full Name'] || row.full_name;
+    if (!hasIdentity) continue;
     const profile = resolveProfile(row);
     if (!profile) { result.warnings.push(`Student account not registered: ${row['Full Name'] || row.Email || row.NPM}`); continue; }
     const update = {
@@ -119,7 +121,19 @@ export async function POST(request) {
       sync_managed: true,
       updated_at: new Date().toISOString()
     };
-    const { error } = await supabase.from('student_module_plans').upsert(payload, { onConflict: 'source_row_key' });
+    const { data: existingPlan, error: lookupError } = await supabase
+      .from('student_module_plans')
+      .select('id')
+      .eq('source_row_key', sourceKey)
+      .maybeSingle();
+    if (lookupError) {
+      result.warnings.push(lookupError.message);
+      continue;
+    }
+    const operation = existingPlan
+      ? supabase.from('student_module_plans').update(payload).eq('id', existingPlan.id)
+      : supabase.from('student_module_plans').upsert(payload, { onConflict: 'student_id,track,planned_week_start,report_group' });
+    const { error } = await operation;
     if (error) result.warnings.push(error.message); else result.plansSynced += 1;
   }
 
