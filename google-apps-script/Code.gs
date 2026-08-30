@@ -201,11 +201,24 @@ function moduleFolderName(reportGroup) {
 function reportFolder(config, data) {
   const root = DriveApp.getFolderById(config.folderId);
   const week = Math.max(1, Number(data.weekNumber) || 1);
-  const weekFolder = childFolder(root, 'Week ' + String(week).padStart(2, '0'));
   const track = String(data.track || 'RL').toUpperCase();
   if (track !== 'RL' && track !== 'IDP') throw new Error('Report submission is available only for RL and IDP');
-  const parent = childFolder(weekFolder, track);
-  return childFolder(parent, moduleFolderName(data.reportGroup));
+  const trackFolder = childFolder(root, track);
+  const weekFolder = childFolder(trackFolder, 'Week ' + String(week).padStart(2, '0'));
+  return childFolder(weekFolder, moduleFolderName(data.reportGroup));
+}
+
+function ensureReportFolders(config) {
+  const root = DriveApp.getFolderById(config.folderId);
+  const modules = ['Module 2&3', 'Module 4&5', 'Module 6', 'Module 7', 'Module 8'];
+  ['RL', 'IDP'].forEach(function (track) {
+    const trackFolder = childFolder(root, track);
+    for (let week = 1; week <= 5; week += 1) {
+      const weekFolder = childFolder(trackFolder, 'Week ' + String(week).padStart(2, '0'));
+      modules.forEach(function (moduleName) { childFolder(weekFolder, moduleName); });
+    }
+  });
+  return { tracks: 2, weeksPerTrack: 5, modulesPerWeek: modules.length };
 }
 
 function uploadReport(config, spreadsheet, data) {
@@ -239,6 +252,7 @@ function doPost(event) {
     if (body.action === 'deleteStudent') return jsonResponse({ data: deleteStudent(spreadsheet, body.data) });
     if (body.action === 'upsertPlan') return jsonResponse({ data: upsertPlan(spreadsheet, body.data) });
     if (body.action === 'deletePlan') return jsonResponse({ data: deletePlan(spreadsheet, body.data) });
+    if (body.action === 'ensureReportFolders') return jsonResponse({ data: ensureReportFolders(config) });
     if (body.action === 'uploadReport') return jsonResponse({ data: uploadReport(config, spreadsheet, body.data) });
     return jsonResponse({ error: 'Unknown action' });
   } catch (error) {
