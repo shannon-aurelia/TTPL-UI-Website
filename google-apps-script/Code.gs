@@ -224,7 +224,7 @@ function ensureReportFolders(config) {
 function uploadReport(config, spreadsheet, data) {
   if (data.mimeType !== 'application/pdf') throw new Error('Only PDF files are accepted');
   const bytes = Utilities.base64Decode(data.base64);
-  if (bytes.length > 20 * 1024 * 1024) throw new Error('The PDF must be smaller than 20 MB');
+  if (bytes.length > 30 * 1024 * 1024) throw new Error('The PDF must be 30 MB or smaller');
   const folder = reportFolder(config, data);
   const blob = Utilities.newBlob(bytes, data.mimeType, data.driveFileName);
   const file = folder.createFile(blob);

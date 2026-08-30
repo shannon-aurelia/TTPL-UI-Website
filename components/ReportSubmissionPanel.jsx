@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Clock, Lock, Upload } from 'lucide-react';
 import { useAuth } from './AuthProvider';
-import { storedFileName } from '../lib/practicum';
+import { MAX_REPORT_BYTES, storedFileName, submissionExpired } from '../lib/practicum';
 
 function formatDate(value) {
   if (!value) return 'Not scheduled';
-  return new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' }).format(new Date(value));
+  return `${new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' }).format(new Date(value))} WIB`;
 }
 
 export default function ReportSubmissionPanel({ track, compact = false }) {
@@ -18,6 +18,7 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
   const [submissions, setSubmissions] = useState([]);
   const [uploading, setUploading] = useState('');
   const [message, setMessage] = useState('');
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const load = useCallback(() => {
     if (!user || !supabase) return;
@@ -33,6 +34,11 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
   }, [user, supabase, track]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 15000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!user || !supabase) return undefined;
@@ -64,12 +70,16 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !supabase || !profile) return;
+    if (submissionExpired(session.deadline_at)) {
+      setMessage('This deadline has closed. Deadlines use Western Indonesia Time (WIB) and include a five-minute upload grace period.');
+      return;
+    }
     if (file.type !== 'application/pdf') {
       setMessage('Only PDF files are accepted.');
       return;
     }
-    if (file.size > 20 * 1024 * 1024) {
-      setMessage('The PDF must be smaller than 20 MB.');
+    if (file.size > MAX_REPORT_BYTES) {
+      setMessage('The PDF must be 30 MB or smaller.');
       return;
     }
     setUploading(session.id);
@@ -136,7 +146,8 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
       {assignments.map((session) => {
         const submitted = submissions.find((item) => item.session_id === session.id);
         const plannedOnly = Boolean(session.planned);
-        const blocked = plannedOnly || !session.submission_open || session.qna_score == null || ['absent', 'excused'].includes(session.attendance_status);
+        const deadlineClosed = !plannedOnly && submissionExpired(session.deadline_at, nowMs);
+        const blocked = plannedOnly || deadlineClosed || !session.submission_open || session.qna_score == null || ['absent', 'excused'].includes(session.attendance_status);
         const moduleLabel = session.report_group?.split('-').slice(1).join('&') || session.module_number;
         const expectedDeadline = session.planned_lab_date ? new Date(`${session.planned_lab_date}T23:59:00+07:00`).getTime() + 86400000 : null;
         return <div className="submission-row" key={`${session.report_group}-${session.week_number}`}>
@@ -144,13 +155,13 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
             <span className="num">Week {session.week_number}</span>
             <h3>{session.report_label || session.report_group}</h3>
             <p>Module {moduleLabel} · {plannedOnly ? `planned ${session.planned_lab_date || 'date pending'} at ${String(session.planned_start_time || '15:00').slice(0,5)}` : session.attendance_status.replace('_', ' ')}{session.is_makeup ? ' · Makeup session' : ''}</p>
-            <p><Clock size={15}/> {plannedOnly ? 'Expected deadline' : 'Deadline'}: {formatDate(session.deadline_at || expectedDeadline)}</p>
+            <p><Clock size={15}/> {plannedOnly ? 'Expected deadline' : 'Deadline'}: {formatDate(session.deadline_at || expectedDeadline)}{!plannedOnly && ' · upload closes 5 minutes later'}</p>
           </div>
           <div className="submission-action">
             {submitted?.status === 'submitted' && <span className="submission-state"><CheckCircle size={17}/> Submitted{Number(submitted.late_penalty) > 0 ? ` · −${submitted.late_penalty} late points` : ''}</span>}
             {submitted?.status === 'uploading' && <span className="submission-state"><Clock size={17}/> Upload in progress</span>}
             {submitted?.status === 'failed' && <span className="submission-state blocked">Previous upload failed · retry</span>}
-            {blocked ? <span className="submission-state blocked"><Lock size={17}/> {plannedOnly ? 'Waiting for attendance and QnA' : session.qna_score == null ? 'Waiting for QnA score' : 'Submission unavailable'}</span> : <label className="btn upload-label"><Upload size={17}/>{uploading === session.id ? 'Uploading...' : submitted ? 'Replace PDF' : 'Upload PDF'}<input type="file" accept="application/pdf" disabled={uploading === session.id} onChange={(event) => upload(event, session)}/></label>}
+            {blocked ? <span className="submission-state blocked"><Lock size={17}/> {plannedOnly ? 'Waiting for attendance and QnA' : deadlineClosed ? 'Deadline closed' : session.qna_score == null ? 'Waiting for QnA score' : 'Submission unavailable'}</span> : <label className="btn upload-label"><Upload size={17}/>{uploading === session.id ? 'Uploading...' : submitted ? 'Replace PDF' : 'Upload PDF'}<input type="file" accept="application/pdf" disabled={uploading === session.id || deadlineClosed} onChange={(event) => upload(event, session)}/></label>}
           </div>
         </div>;
       })}

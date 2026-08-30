@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { after, NextResponse } from 'next/server';
+import { MAX_REPORT_BYTES, submissionExpired } from '../../../lib/practicum';
 
 function userClient(authorization) {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
@@ -56,12 +57,13 @@ export async function POST(request) {
 
   const body = await request.json();
   const { phase = 'complete', sessionId, filePath, originalFileName, storedFileName } = body;
+  if (!['start', 'complete', 'failed'].includes(phase)) return NextResponse.json({ error: 'Invalid upload phase' }, { status: 400 });
   if (!sessionId || !filePath || !originalFileName || !storedFileName) return NextResponse.json({ error: 'Missing submission details' }, { status: 400 });
 
   const [profileResult, sessionResult, existingResult] = await Promise.all([
     supabase.from('profiles').select('full_name,npm,email').eq('id', authData.user.id).single(),
     supabase.from('practicum_sessions').select('*').eq('id', sessionId).eq('student_id', authData.user.id).single(),
-    supabase.from('submissions').select('id').eq('session_id', sessionId).maybeSingle()
+    supabase.from('submissions').select('id,status,submitted_at,file_path').eq('session_id', sessionId).maybeSingle()
   ]);
   if (profileResult.error || sessionResult.error) return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
 
@@ -74,6 +76,29 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Submission opens only after attendance and a QnA score are recorded.' }, { status: 403 });
   }
   if (!session.deadline_at) return NextResponse.json({ error: 'This submission does not have an active deadline.' }, { status: 403 });
+  if (phase === 'start' && submissionExpired(session.deadline_at)) {
+    return NextResponse.json({ error: 'This deadline has closed. Deadlines use WIB and uploads close five minutes after 23:59.' }, { status: 403 });
+  }
+  if (phase === 'complete') {
+    if (!existingResult.data?.id || existingResult.data.status !== 'uploading' || existingResult.data.file_path !== filePath) {
+      return NextResponse.json({ error: 'No matching upload is in progress. Please choose the PDF again.' }, { status: 409 });
+    }
+    const pathParts = filePath.split('/');
+    const objectName = pathParts.pop();
+    const folder = pathParts.join('/');
+    const { data: objects, error: listError } = await supabase.storage.from('practicum-reports').list(folder, {
+      limit: 10,
+      search: objectName
+    });
+    const uploadedObject = objects?.find((object) => object.name === objectName);
+    const uploadedSize = Number(uploadedObject?.metadata?.size || 0);
+    if (listError || !uploadedObject || uploadedSize <= 0) {
+      return NextResponse.json({ error: 'The PDF upload did not finish. Please retry; no submission was counted.' }, { status: 400 });
+    }
+    if (uploadedSize > MAX_REPORT_BYTES) {
+      return NextResponse.json({ error: 'The PDF must be 30 MB or smaller.' }, { status: 413 });
+    }
+  }
   const payload = {
     ...(existingResult.data?.id ? { id: existingResult.data.id } : {}),
     session_id: session.id,
