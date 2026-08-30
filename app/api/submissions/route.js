@@ -76,7 +76,7 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Submission opens only after attendance and a QnA score are recorded.' }, { status: 403 });
   }
   if (!session.deadline_at) return NextResponse.json({ error: 'This submission does not have an active deadline.' }, { status: 403 });
-  if (phase === 'start' && submissionExpired(session.deadline_at)) {
+  if ((phase === 'start' || phase === 'complete') && submissionExpired(session.deadline_at)) {
     return NextResponse.json({ error: 'This deadline has closed. Deadlines use WIB and uploads close five minutes after 23:59.' }, { status: 403 });
   }
   if (phase === 'complete') {
@@ -117,10 +117,10 @@ export async function POST(request) {
     : await supabase.from('submissions').insert(payload).select().single();
   if (submissionResult.error) return NextResponse.json({ error: submissionResult.error.message }, { status: 400 });
 
-  // The start response is deliberately returned before the PDF transfer begins. The
-  // database trigger records its server timestamp as the official submission time.
+  // Start only creates a temporary upload attempt. The successful completion call
+  // records the official submission time after the PDF exists in storage.
   if (phase === 'start') {
-    return NextResponse.json({ submission: submissionResult.data, uploadStartedAt: submissionResult.data.submitted_at });
+    return NextResponse.json({ submission: submissionResult.data });
   }
   if (phase === 'failed') {
     return NextResponse.json({ submission: submissionResult.data });
