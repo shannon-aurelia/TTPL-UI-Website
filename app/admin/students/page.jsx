@@ -34,15 +34,17 @@ export default function StudentsPage() {
 
   const load = useCallback(async () => {
     if (!supabase || !isStaff) return;
-    const [profileResult, sessionResult, planResult, submissionResult] = await Promise.all([
+    const [profileResult, rosterResult, sessionResult, planResult, submissionResult] = await Promise.all([
       supabase.from('profiles').select('*').eq('role', 'student').order('full_name'),
+      supabase.from('student_roster').select('*').order('full_name'),
       supabase.from('practicum_sessions').select('*').order('attended_at', { ascending: false }),
       supabase.from('student_module_plans').select('*').order('planned_lab_date'),
       supabase.from('submissions').select('*').order('submitted_at', { ascending: false })
     ]);
-    const error = profileResult.error || sessionResult.error || planResult.error || submissionResult.error;
+    const error = profileResult.error || rosterResult.error || sessionResult.error || planResult.error || submissionResult.error;
     if (error) setMessage(error.message);
-    setStudents(profileResult.data || []);
+    const claimedIds = new Set((profileResult.data || []).map((student) => student.id));
+    setStudents([...(profileResult.data || []), ...(rosterResult.data || []).filter((student) => !student.claimed_by || !claimedIds.has(student.claimed_by)).map((student) => ({ ...student, id: `roster-${student.id}`, roster_id: student.id, email: student.ui_email || 'Registration pending', gmail_email: student.gmail_email, is_roster: true, study_program: 'Electrical Engineering' }))]);
     setSessions(sessionResult.data || []);
     setPlans(planResult.data || []);
     setSubmissions(submissionResult.data || []);
@@ -59,6 +61,7 @@ export default function StudentsPage() {
     if (!supabase || !isStaff) return undefined;
     const channel = supabase.channel('student-directory-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_roster' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'practicum_sessions' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_module_plans' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, load)
@@ -85,7 +88,9 @@ export default function StudentsPage() {
     const response = await fetch('/api/admin-data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` },
-      body: JSON.stringify({ action: 'updateStudent', id: student.id, full_name: draft.full_name, npm: draft.npm, group_name: draft.group_name, study_program: draft.study_program, is_active: draft.is_active })
+      body: JSON.stringify(student.is_roster
+        ? { action: 'updateRoster', id: student.roster_id, full_name: draft.full_name, npm: draft.npm, is_active: draft.is_active }
+        : { action: 'updateStudent', id: student.id, full_name: draft.full_name, npm: draft.npm, gmail_email: draft.gmail_email, group_name: draft.group_name, study_program: draft.study_program, is_active: draft.is_active })
     });
     const result = await response.json();
     setMessage(response.ok ? `${draft.full_name} was updated on the website and Sheet.` : result.error);
@@ -127,21 +132,22 @@ export default function StudentsPage() {
         const draft = drafts[student.id] || student;
         const expanded = openStudent === student.id;
         const attendance = sessions.filter((item) => item.student_id === student.id);
-        const studentPlans = plans.filter((item) => item.student_id === student.id);
+        const studentPlans = plans.filter((item) => student.is_roster ? item.roster_id === student.roster_id : item.student_id === student.id);
         const studentSubmissions = submissions.filter((item) => item.student_id === student.id);
         return <article className={`card student-directory-card ${expanded ? 'expanded' : ''}`} key={student.id}>
           <button className="student-card-summary" type="button" onClick={() => setOpenStudent(expanded ? '' : student.id)} aria-expanded={expanded}>
-            <span className="student-avatar"><UserRound/></span><span><b>{student.full_name}</b><small>{student.npm || 'No NPM'} · {student.email}</small></span><span className={student.is_active === false ? 'student-state blocked' : 'student-state'}>{student.is_active === false ? 'Blocked' : 'Active'}</span><span className="student-record-count">{attendance.length} attendance</span>{expanded ? <ChevronUp/> : <ChevronDown/>}
+            <span className="student-avatar"><UserRound/></span><span><b>{student.full_name}</b><small>{student.npm || 'No NPM'} · {student.email}</small></span><span className={student.is_active === false ? 'student-state blocked' : 'student-state'}>{student.is_active === false ? 'Blocked' : student.is_roster ? 'Registration pending' : 'Active'}</span><span className="student-record-count">{attendance.length} attendance</span>{expanded ? <ChevronUp/> : <ChevronDown/>}
           </button>
           {expanded && <div className="student-card-detail">
             <div className="student-edit-grid">
               <label>Full name<input value={draft.full_name || ''} onChange={(event) => updateDraft(student, 'full_name', event.target.value)}/></label>
               <label>NPM<input value={draft.npm || ''} onChange={(event) => updateDraft(student, 'npm', event.target.value)}/></label>
+              {!student.is_roster && <label>Gmail<input value={draft.gmail_email || ''} onChange={(event) => updateDraft(student, 'gmail_email', event.target.value)}/></label>}
               <label>Group<input value={draft.group_name || ''} onChange={(event) => updateDraft(student, 'group_name', event.target.value)}/></label>
               <label>Study program<select value={draft.study_program || 'Electrical Engineering'} onChange={(event) => updateDraft(student, 'study_program', event.target.value)}><option>Electrical Engineering</option><option>Computer Engineering</option></select></label>
               <label className="student-active-control"><input type="checkbox" checked={draft.is_active !== false} onChange={(event) => updateDraft(student, 'is_active', event.target.checked)}/><span><b>Account active</b><small>Blocked students cannot sign in or submit.</small></span></label>
               <button className="btn" type="button" disabled={working === student.id} onClick={() => saveStudent(student)}><Save size={16}/>{working === student.id ? 'Saving...' : 'Save profile'}</button>
-              {profile.role === 'admin' && <button className="danger-action" type="button" disabled={working === student.id} onClick={() => deleteStudent(student)}><Trash2 size={16}/> Delete student</button>}
+              {profile.role === 'admin' && !student.is_roster && <button className="danger-action" type="button" disabled={working === student.id} onClick={() => deleteStudent(student)}><Trash2 size={16}/> Delete student</button>}
             </div>
             <div className="student-record-columns">
               <section><h3>Attendance and QnA</h3>{attendance.length ? attendance.map((item) => <div className="student-record-row" key={item.id}><span><b>{item.track.toUpperCase()} · Module {moduleName(item)}</b><small>{formatDate(item.attended_at || item.scheduled_at)}{item.is_makeup ? ' · Makeup' : ''}</small></span><strong>{item.qna_score ?? '—'}</strong></div>) : <p className="muted">No attendance recorded yet.</p>}</section>
