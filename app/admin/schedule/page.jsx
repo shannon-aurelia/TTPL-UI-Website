@@ -105,7 +105,7 @@ export default function SchedulePage() {
       report_label: `${track.toUpperCase()} Module ${moduleLabel} Report`,
       planned_week_start: weekStart,
       planned_lab_date: plannedDate,
-      planned_start_time: plannedTime,
+      planned_start_time: student.planned_start_time || plannedTime,
       status: existing?.status || 'expected',
       approved_reason: existing?.approved_reason || null,
       notes: existing?.notes || ''
