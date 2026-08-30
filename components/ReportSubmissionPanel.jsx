@@ -83,7 +83,7 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
       return;
     }
     setUploading(session.id);
-    setMessage('Reserving your official submission time...');
+    setMessage('Checking access and preparing the upload...');
     const fileName = storedFileName({ name: profile.full_name, npm: profile.npm, reportGroup: session.report_group, weekNumber: session.week_number });
     const path = `${user.id}/${session.track}/${session.report_group}/week-${session.week_number}/${fileName}`;
     let { data: sessionData } = await supabase.auth.getSession();
@@ -99,14 +99,14 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
       setUploading('');
       return;
     }
-    setMessage(`Submission time reserved at ${formatDate(startResult.uploadStartedAt)}. Uploading PDF...`);
+    setMessage('Uploading PDF... Keep this page open until the upload is confirmed.');
     const { error: storageError } = await supabase.storage.from('practicum-reports').upload(path, file, { upsert: true, contentType: 'application/pdf' });
     if (storageError) {
       await fetch('/api/submissions', {
         method: 'POST', headers,
         body: JSON.stringify({ phase: 'failed', sessionId: session.id, filePath: path, originalFileName: file.name, storedFileName: fileName })
       });
-      setMessage(`Upload failed: ${storageError.message}. Your attempt time was recorded, but the report was not submitted. Please retry.`);
+      setMessage(`Upload failed: ${storageError.message}. No submission was counted. Please retry.`);
       setUploading('');
       return;
     }
@@ -127,7 +127,7 @@ export default function ReportSubmissionPanel({ track, compact = false }) {
     } else {
       const existing = submissions.find((item) => item.session_id === session.id);
       setSubmissions((current) => existing ? current.map((item) => item.id === existing.id ? result.submission : item) : [...current, result.submission]);
-      setMessage(`${fileName} has been received. Its on-time status uses the reserved start time; Drive archiving is continuing in the background.`);
+      setMessage(`${fileName} has been received. Its submission time is the successful upload completion time; Drive archiving is continuing in the background.`);
     }
     setUploading('');
   };
