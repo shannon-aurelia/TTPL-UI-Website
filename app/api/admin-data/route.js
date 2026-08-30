@@ -37,6 +37,8 @@ function studentRow(profile) {
     'Study Program': profile.study_program || 'Electrical Engineering',
     Class: '',
     Email: profile.email || '',
+    'UI Email': profile.email || '',
+    'Gmail Email': profile.gmail_email || '',
     'Account ID': profile.id,
     Active: profile.is_active !== false
   };
@@ -70,12 +72,25 @@ export async function POST(request) {
   if (!url || !serviceKey) return NextResponse.json({ error: 'Missing server configuration' }, { status: 500 });
   const supabase = createClient(url, serviceKey, { auth: { persistSession: false } });
   try {
+    if (body.action === 'updateRoster') {
+      const update = {
+        full_name: String(body.full_name || '').trim(),
+        npm: String(body.npm || '').trim(),
+        is_active: body.is_active !== false,
+        updated_at: new Date().toISOString()
+      };
+      const { data: rosterStudent, error } = await supabase.from('student_roster').update(update).eq('id', body.id).select().single();
+      if (error) throw error;
+      after(async () => { try { await sheet('upsertStudent', { 'Full Name': rosterStudent.full_name, NPM: rosterStudent.npm, Class: rosterStudent.class_type.toUpperCase(), 'UI Email': rosterStudent.ui_email || '', 'Gmail Email': rosterStudent.gmail_email || '', Active: rosterStudent.is_active }); } catch (error) { console.error('[admin-data] Roster Sheet sync pending', { id: body.id, error: String(error) }); } });
+      return NextResponse.json({ saved: true, roster: rosterStudent, sheetSync: 'pending' });
+    }
     if (body.action === 'updateStudent') {
       const { data: current } = await supabase.from('profiles').select('*').eq('id', body.id).single();
       if (!current || current.role !== 'student') throw new Error('Student account not found');
       const update = {
         full_name: String(body.full_name || '').trim(),
         npm: String(body.npm || '').trim() || null,
+        gmail_email: String(body.gmail_email || '').trim().toLowerCase() || null,
         group_name: String(body.group_name || '').trim() || null,
         study_program: body.study_program || 'Electrical Engineering',
         is_active: body.is_active !== false,
@@ -98,7 +113,12 @@ export async function POST(request) {
       return NextResponse.json({ deleted: true });
     }
     if (body.action === 'upsertPlan') {
-      const { data: profile } = await supabase.from('profiles').select('full_name,npm,email').eq('id', body.plan.student_id).single();
+      const identityQuery = body.plan.student_id
+        ? supabase.from('profiles').select('full_name,npm,email').eq('id', body.plan.student_id).single()
+        : supabase.from('student_roster').select('full_name,npm,ui_email').eq('id', body.plan.roster_id).single();
+      const { data: identity, error: identityError } = await identityQuery;
+      if (identityError || !identity) throw new Error('Student roster entry not found');
+      const profile = { ...identity, email: identity.email || identity.ui_email || '' };
       const payload = { ...body.plan, moduleLabel: undefined, sync_managed: true, updated_at: new Date().toISOString() };
       const { error } = await supabase.from('student_module_plans').upsert(payload, { onConflict: 'source_row_key' });
       if (error) throw error;

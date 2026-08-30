@@ -7,14 +7,14 @@ import { useAuth } from './AuthProvider';
 
 export default function ProfileEditor() {
   const { profile, supabase, refreshProfile } = useAuth();
-  const [form, setForm] = useState({ full_name: '', npm: '', study_program: 'Electrical Engineering' });
+  const [form, setForm] = useState({ full_name: '', npm: '', gmail_email: '', study_program: 'Electrical Engineering' });
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    setForm({ full_name: profile?.full_name || '', npm: profile?.npm || '', study_program: profile?.study_program || 'Electrical Engineering' });
+    setForm({ full_name: profile?.full_name || '', npm: profile?.npm || '', gmail_email: profile?.gmail_email || '', study_program: profile?.study_program || 'Electrical Engineering' });
   }, [profile]);
 
   if (!profile) return null;
@@ -55,7 +55,7 @@ export default function ProfileEditor() {
   return <form className="card profile-editor" onSubmit={save}>
     <div><UserRound/><div><div className="eyebrow">Your account</div><h2>Edit profile</h2><p className="muted">Your email stays tied to your login. Name changes appear everywhere immediately.</p></div></div>
     <label>Full name<input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} required/></label>
-    {profile.role === 'student' && <><label>NPM<input value={form.npm} onChange={(event) => setForm({ ...form, npm: event.target.value })}/></label><label>Study program<select value={form.study_program} onChange={(event) => setForm({ ...form, study_program: event.target.value })}><option>Electrical Engineering</option><option>Computer Engineering</option></select></label></>}
+    {profile.role === 'student' && <><label>NPM<input value={form.npm} onChange={(event) => setForm({ ...form, npm: event.target.value })}/></label><label>Personal Gmail<input type="email" value={form.gmail_email} onChange={(event) => setForm({ ...form, gmail_email: event.target.value })}/></label><label>Study program<select value={form.study_program} onChange={(event) => setForm({ ...form, study_program: event.target.value })}><option>Electrical Engineering</option><option>Computer Engineering</option></select></label></>}
     <div className="btn-row"><button className="btn" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save profile'}</button>{profile.role === 'student' && <button className="danger-action" type="button" disabled={deleting} onClick={deleteAccount}><Trash2 size={16}/>{deleting ? 'Deleting...' : 'Delete my account'}</button>}</div>
     {message && <small>{message}</small>}
   </form>;

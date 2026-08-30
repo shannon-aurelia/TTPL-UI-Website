@@ -1697,6 +1697,34 @@ html[data-theme="light"] .image-frame-overlay {
   justify-content: center;
 }
 
+.roster-results {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  margin-top: -10px;
+}
+
+.roster-results button {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(7, 28, 43, .82);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.roster-results button:hover,
+.roster-results button.selected {
+  border-color: var(--mint);
+  background: rgba(20, 108, 111, .38);
+}
+
+.roster-results small { color: var(--mint); }
+
 .auth-switch {
   margin-top: 16px;
   width: 100%;

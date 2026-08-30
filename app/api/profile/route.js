@@ -12,6 +12,7 @@ async function sheetStudent(profile) {
     'Study Program': profile.study_program || 'Electrical Engineering',
     Class: '',
     Email: profile.email,
+    'Gmail Email': profile.gmail_email || '',
     'Account ID': profile.id,
     Active: true
   };
@@ -34,10 +35,12 @@ export async function PATCH(request) {
   const update = {
     full_name: String(body.full_name || '').trim(),
     npm: current.role === 'student' ? String(body.npm || '').trim() || null : current.npm,
+    gmail_email: current.role === 'student' ? String(body.gmail_email || '').trim().toLowerCase() || null : current.gmail_email,
     study_program: current.role === 'student' ? body.study_program || current.study_program : current.study_program,
     updated_at: new Date().toISOString()
   };
   if (!update.full_name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  if (current.role === 'student' && update.gmail_email && !update.gmail_email.endsWith('@gmail.com')) return NextResponse.json({ error: 'Enter a valid Gmail address.' }, { status: 400 });
   const next = { ...current, ...update };
   const { error } = await authClient.from('profiles').update(update).eq('id', data.user.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });

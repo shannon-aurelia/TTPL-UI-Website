@@ -64,19 +64,38 @@ export async function POST(request) {
   }
 
   const supabase = createClient(url, serviceKey, { auth: { persistSession: false } });
-  const { data: profiles } = await supabase.from('profiles').select('*');
+  const [{ data: profiles }, { data: roster }] = await Promise.all([
+    supabase.from('profiles').select('*'),
+    supabase.from('student_roster').select('*')
+  ]);
   const byId = new Map((profiles || []).map((item) => [item.id, item]));
   const byEmail = new Map((profiles || []).map((item) => [clean(item.email), item]));
   const byNpm = new Map((profiles || []).filter((item) => item.npm).map((item) => [clean(item.npm), item]));
   const byName = new Map((profiles || []).filter((item) => item.full_name).map((item) => [clean(item.full_name), item]));
   const resolveProfile = (row) => byId.get(row['Account ID']) || byNpm.get(clean(row.npm || row.NPM)) || byEmail.get(clean(row.email || row.Email)) || byName.get(clean(row.full_name || row['Full Name']));
+  const rosterByNpm = new Map((roster || []).map((item) => [clean(item.npm), item]));
+  const rosterByName = new Map((roster || []).map((item) => [clean(item.full_name), item]));
+  const resolveRoster = (row) => rosterByNpm.get(clean(row.npm || row.NPM)) || rosterByName.get(clean(row.full_name || row['Full Name']));
   const result = { studentsSynced: 0, attendanceSynced: 0, plansSynced: 0, warnings: [] };
 
   for (const row of snapshot.students || []) {
     const hasIdentity = row['Account ID'] || row.NPM || row.npm || row.Email || row.email || row['Full Name'] || row.full_name;
     if (!hasIdentity) continue;
     const profile = resolveProfile(row);
-    if (!profile) { result.warnings.push(`Student account not registered: ${row['Full Name'] || row.Email || row.NPM}`); continue; }
+    if (!profile) {
+      const rosterStudent = resolveRoster(row);
+      if (!rosterStudent) { result.warnings.push(`Student not found in roster: ${row['Full Name'] || row.Email || row.NPM}`); continue; }
+      const rosterUpdate = {
+        full_name: row['Full Name'] || rosterStudent.full_name,
+        ui_email: row['UI Email'] || row.Email || rosterStudent.ui_email,
+        gmail_email: row.Gmail || row['Gmail Email'] || rosterStudent.gmail_email,
+        is_active: enabled(row.Active),
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await supabase.from('student_roster').update(rosterUpdate).eq('id', rosterStudent.id);
+      if (error) result.warnings.push(error.message); else result.studentsSynced += 1;
+      continue;
+    }
     const update = {
       full_name: row['Full Name'] || profile.full_name,
       npm: row.NPM || null,
@@ -93,12 +112,14 @@ export async function POST(request) {
 
   for (const row of snapshot.plans || []) {
     const profile = resolveProfile(row);
-    if (!profile || !row.planned_week_start) continue;
+    const rosterStudent = profile ? null : resolveRoster(row);
+    if ((!profile && !rosterStudent) || !row.planned_week_start) continue;
     const track = clean(row.track) || 'rl';
     const number = moduleNumber(row.module_number);
     if (!Number.isFinite(number)) continue;
     const group = reportGroupFor(track, number);
-    const sourceKey = row.source_key || `plan-${profile.id}-${row.report_group || number}-${row.planned_week_start}`;
+    const identityId = profile?.id || rosterStudent.id;
+    const sourceKey = row.source_key || `plan-${identityId}-${row.report_group || number}-${row.planned_week_start}`;
     if (clean(row.status) === 'deleted') {
       const { error } = await supabase.from('student_module_plans').delete().eq('source_row_key', sourceKey);
       if (error) result.warnings.push(error.message);
@@ -106,7 +127,8 @@ export async function POST(request) {
     }
     const payload = {
       source_row_key: sourceKey,
-      student_id: profile.id,
+      student_id: profile?.id || null,
+      roster_id: rosterStudent?.id || null,
       track,
       week_number: Number(row.week_number) || 1,
       module_number: number,
@@ -132,7 +154,7 @@ export async function POST(request) {
     }
     const operation = existingPlan
       ? supabase.from('student_module_plans').update(payload).eq('id', existingPlan.id)
-      : supabase.from('student_module_plans').upsert(payload, { onConflict: 'student_id,track,planned_week_start,report_group' });
+      : supabase.from('student_module_plans').upsert(payload, { onConflict: 'source_row_key' });
     const { error } = await operation;
     if (error) result.warnings.push(error.message); else result.plansSynced += 1;
   }

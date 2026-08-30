@@ -55,13 +55,14 @@ export default function SchedulePage() {
     if (!supabase || !isStaff) return;
     const [studentResult, planResult, sessionResult] = await Promise.all([
       supabase.from('profiles').select('id,full_name,npm,email,study_program,is_active').eq('role', 'student').order('full_name'),
-      supabase.from('student_module_plans').select('*, profiles!student_module_plans_student_id_fkey(full_name,npm,email,study_program)').order('planned_lab_date'),
+      supabase.from('student_module_plans').select('*, profiles!student_module_plans_student_id_fkey(full_name,npm,email,study_program), student_roster!student_module_plans_roster_id_fkey(id,full_name,npm,class_type,claimed_by)').order('planned_lab_date'),
       supabase.from('practicum_sessions').select('student_id,week_number,report_group,attendance_status,attended_at')
     ]);
-    const error = studentResult.error || planResult.error;
+    const { data: rosterData, error: rosterError } = await supabase.from('student_roster').select('id,full_name,npm,class_type,claimed_by,is_active').eq('is_active', true).is('claimed_by', null).order('full_name');
+    const error = studentResult.error || planResult.error || rosterError;
     if (error) setMessage(error.message);
-    setStudents((studentResult.data || []).filter((student) => student.is_active !== false));
-    setPlans(planResult.data || []);
+    setStudents([...(studentResult.data || []).filter((student) => student.is_active !== false), ...(rosterData || []).map((student) => ({ ...student, roster_id: student.id, id: `roster-${student.id}`, email: 'Registration pending', is_roster: true }))]);
+    setPlans((planResult.data || []).map((plan) => ({ ...plan, profiles: plan.profiles || plan.student_roster })));
     setSessions(sessionResult.data || []);
   }, [supabase, isStaff]);
 
@@ -76,6 +77,7 @@ export default function SchedulePage() {
     if (!supabase || !isStaff) return undefined;
     const channel = supabase.channel('schedule-page-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'student_roster' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_module_plans' }, load)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -91,12 +93,15 @@ export default function SchedulePage() {
   }, [students, query]);
 
   const savePlan = async (student, plannedDate) => {
-    const studentId = student.student_id || student.id;
-    const existing = plans.find((plan) => plan.student_id === studentId && plan.report_group === group && plan.planned_week_start === weekStart);
+    const rosterId = student.roster_id || student.student_roster?.id || null;
+    const studentId = student.student_id || (!rosterId && student.id) || null;
+    const identity = studentId || rosterId;
+    const existing = plans.find((plan) => (studentId ? plan.student_id === studentId : plan.roster_id === rosterId) && plan.report_group === group && plan.planned_week_start === weekStart);
     const moduleNumber = Number(moduleLabel.split('&')[0]);
     const payload = {
-      source_row_key: existing?.source_row_key || `calendar-${studentId}-${group}-${weekStart}`,
+      source_row_key: existing?.source_row_key || `calendar-${identity}-${group}-${weekStart}`,
       student_id: studentId,
+      roster_id: rosterId,
       track,
       week_number: Number(weekNumber),
       module_number: moduleNumber,
@@ -110,7 +115,7 @@ export default function SchedulePage() {
       approved_reason: existing?.approved_reason || null,
       notes: existing?.notes || ''
     };
-    const profileData = student.profiles || student;
+    const profileData = student.profiles || student.student_roster || student;
     setPlans((current) => existing ? current.map((plan) => plan.id === existing.id ? { ...plan, ...payload, profiles: profileData } : plan) : [...current, { ...payload, id: `saving-${payload.source_row_key}`, profiles: profileData }]);
     setMessage(`Saving ${profileData.full_name} to the website and Sheet...`);
     const { data } = await supabase.auth.getSession();
