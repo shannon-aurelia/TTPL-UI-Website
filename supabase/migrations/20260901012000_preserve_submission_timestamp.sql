@@ -41,8 +41,7 @@ begin
     else now()
   end;
   new.submitted_at := official_time;
-  new.minutes_late := case when assigned.deadline_at is null then 0
-    else greatest(0, ceil(extract(epoch from (official_time - assigned.deadline_at)) / 60.0)::integer) end;
+  new.minutes_late := greatest(0, ceil(extract(epoch from (official_time - assigned.deadline_at)) / 60.0)::integer);
   new.late_penalty := least(100, new.minutes_late * 10);
   new.updated_at := now();
 

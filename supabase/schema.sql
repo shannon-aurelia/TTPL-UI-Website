@@ -216,7 +216,7 @@ create policy "students upload own reports" on storage.objects for insert to aut
   and (storage.foldername(name))[1] = auth.uid()::text
   and lower(storage.extension(name)) = 'pdf'
   and coalesce(metadata->>'mimetype', '') = 'application/pdf'
-  and coalesce((metadata->>'size')::bigint, 0) <= 20971520
+  and coalesce((metadata->>'size')::bigint, 0) <= 31457280
 );
 create policy "students replace own reports" on storage.objects for update to authenticated using (
   bucket_id = 'practicum-reports' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_staff())
@@ -225,7 +225,7 @@ create policy "students replace own reports" on storage.objects for update to au
   and ((storage.foldername(name))[1] = auth.uid()::text or public.is_staff())
   and lower(storage.extension(name)) = 'pdf'
   and coalesce(metadata->>'mimetype', '') = 'application/pdf'
-  and coalesce((metadata->>'size')::bigint, 0) <= 20971520
+  and coalesce((metadata->>'size')::bigint, 0) <= 31457280
 );
 create policy "students read own reports" on storage.objects for select to authenticated using (
   bucket_id = 'practicum-reports' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_staff())
@@ -268,10 +268,14 @@ begin
   new.track := assigned.track;
   new.report_group := assigned.report_group;
   new.week_number := assigned.week_number;
-  new.submitted_at := now();
+  new.submitted_at := case
+    when tg_op = 'UPDATE' and old.status = 'uploading' and new.status = 'submitted' then now()
+    when tg_op = 'UPDATE' then old.submitted_at
+    else now()
+  end;
   new.minutes_late := case
     when assigned.deadline_at is null then 0
-    else greatest(0, ceil(extract(epoch from (now() - assigned.deadline_at)) / 60.0)::integer)
+    else greatest(0, ceil(extract(epoch from (new.submitted_at - assigned.deadline_at)) / 60.0)::integer)
   end;
   new.late_penalty := least(100, new.minutes_late * 10);
   new.status := 'submitted';

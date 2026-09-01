@@ -223,10 +223,17 @@ function ensureReportFolders(config) {
 
 function uploadReport(config, spreadsheet, data) {
   if (data.mimeType !== 'application/pdf') throw new Error('Only PDF files are accepted');
-  const bytes = Utilities.base64Decode(data.base64);
-  if (bytes.length > 30 * 1024 * 1024) throw new Error('The PDF must be 30 MB or smaller');
+  let blob;
+  if (data.downloadUrl) {
+    const response = UrlFetchApp.fetch(data.downloadUrl, { muteHttpExceptions: true });
+    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) throw new Error('Could not retrieve the uploaded PDF');
+    blob = response.getBlob().setName(data.driveFileName);
+  } else {
+    const bytes = Utilities.base64Decode(data.base64 || '');
+    blob = Utilities.newBlob(bytes, data.mimeType, data.driveFileName);
+  }
+  if (blob.getBytes().length > 30 * 1024 * 1024) throw new Error('The PDF must be 30 MB or smaller');
   const folder = reportFolder(config, data);
-  const blob = Utilities.newBlob(bytes, data.mimeType, data.driveFileName);
   const file = folder.createFile(blob);
   appendSubmission(spreadsheet, data, file);
   return { fileId: file.getId(), fileUrl: file.getUrl(), fileName: file.getName() };

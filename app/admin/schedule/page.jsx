@@ -93,22 +93,28 @@ export default function SchedulePage() {
   }, [students, query]);
 
   const savePlan = async (student, plannedDate) => {
+    const movingPlan = student.source_row_key ? student : null;
     const rosterId = student.roster_id || student.student_roster?.id || null;
     const studentId = student.student_id || (!rosterId && student.id) || null;
     const identity = studentId || rosterId;
-    const existing = plans.find((plan) => (studentId ? plan.student_id === studentId : plan.roster_id === rosterId) && plan.report_group === group && plan.planned_week_start === weekStart);
-    const moduleNumber = Number(moduleLabel.split('&')[0]);
+    const targetGroup = movingPlan?.report_group || group;
+    const targetTrack = movingPlan?.track || track;
+    const targetWeek = movingPlan?.week_number || Number(weekNumber);
+    const targetWeekStart = movingPlan?.planned_week_start || weekStart;
+    const targetLabel = movingPlan ? movingPlan.report_group.split('-').slice(1).join('&') : moduleLabel;
+    const existing = movingPlan || plans.find((plan) => (studentId ? plan.student_id === studentId : plan.roster_id === rosterId) && plan.report_group === targetGroup && plan.planned_week_start === targetWeekStart);
+    const moduleNumber = movingPlan?.module_number || Number(targetLabel.split('&')[0]);
     const payload = {
-      source_row_key: existing?.source_row_key || `calendar-${identity}-${group}-${weekStart}`,
+      source_row_key: existing?.source_row_key || `calendar-${identity}-${targetGroup}-${targetWeekStart}`,
       student_id: studentId,
       roster_id: rosterId,
-      track,
-      week_number: Number(weekNumber),
+      track: targetTrack,
+      week_number: targetWeek,
       module_number: moduleNumber,
-      moduleLabel,
-      report_group: group,
-      report_label: `${track.toUpperCase()} Module ${moduleLabel} Report`,
-      planned_week_start: weekStart,
+      moduleLabel: targetLabel,
+      report_group: targetGroup,
+      report_label: existing?.report_label || `${targetTrack.toUpperCase()} Module ${targetLabel} Report`,
+      planned_week_start: targetWeekStart,
       planned_lab_date: plannedDate,
       planned_start_time: student.planned_start_time || plannedTime,
       status: existing?.status || 'expected',
@@ -152,7 +158,7 @@ export default function SchedulePage() {
   const approveMove = async (plan, reason) => {
     const normalized = reason || null;
     const existing = plans.find((item) => item.id === plan.id);
-    const payload = { ...existing, status: normalized ? 'rescheduled' : 'expected', approved_reason: normalized, moduleLabel };
+    const payload = { ...existing, status: normalized ? 'rescheduled' : 'expected', approved_reason: normalized, moduleLabel: existing.report_group.split('-').slice(1).join('&') };
     setPlans((current) => current.map((item) => item.id === plan.id ? { ...item, ...payload } : item));
     const { data } = await supabase.auth.getSession();
     const response = await fetch('/api/admin-data', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` }, body: JSON.stringify({ action: 'upsertPlan', plan: payload }) });

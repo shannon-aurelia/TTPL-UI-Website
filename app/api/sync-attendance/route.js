@@ -12,8 +12,18 @@ function attendedDate(date, time) {
 
 function dueDate(attendedAt, override) {
   if (override) {
-    const local = String(override).trim().replace(' ', 'T');
-    return new Date(`${local}${/T\d\d:\d\d:\d\d/.test(local) ? '' : ':00'}+07:00`).toISOString();
+    const raw = String(override).trim();
+    const local = raw.replace(' ', 'T');
+    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(local)
+      ? `${local}T23:59:00+07:00`
+      : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(local)
+        ? `${local}:00+07:00`
+        : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(local)
+          ? `${local}+07:00`
+          : local;
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) throw new Error(`Invalid deadline override: ${raw}`);
+    return parsed.toISOString();
   }
   const jakarta = new Date(attendedAt.getTime() + 7 * 60 * 60 * 1000);
   jakarta.setUTCDate(jakarta.getUTCDate() + 1);
@@ -98,7 +108,7 @@ export async function POST(request) {
     }
     const update = {
       full_name: row['Full Name'] || profile.full_name,
-      npm: row.NPM || null,
+      npm: String(row.NPM || '').trim() || profile.npm,
       group_name: row.Group || null,
       study_program: row['Study Program'] || profile.study_program,
       is_active: enabled(row.Active),
