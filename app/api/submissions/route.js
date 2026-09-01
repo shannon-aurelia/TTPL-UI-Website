@@ -15,10 +15,11 @@ function serviceClient() {
   });
 }
 
-async function sendToDrive(downloadUrl, submission, profile) {
+async function sendToDrive(downloadUrl, file, submission, profile) {
   const url = process.env.GOOGLE_APPS_SCRIPT_WEB_APP_URL;
   const secret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
   if (!url || !secret) return { pending: true };
+  const useSignedUrl = process.env.GOOGLE_APPS_SCRIPT_SIGNED_URL_UPLOADS === 'true';
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -41,7 +42,7 @@ async function sendToDrive(downloadUrl, submission, profile) {
         originalFileName: submission.original_file_name,
         driveFileName: submission.stored_file_name,
         mimeType: 'application/pdf',
-        downloadUrl
+        ...(useSignedUrl ? { downloadUrl } : { base64: Buffer.from(await file.arrayBuffer()).toString('base64') })
       }
     }),
     cache: 'no-store'
@@ -139,9 +140,14 @@ export async function POST(request) {
   after(async () => {
     try {
     const admin = serviceClient();
-    const { data: signed, error: signedError } = await admin.storage.from('practicum-reports').createSignedUrl(filePath, 900);
+    const useSignedUrl = process.env.GOOGLE_APPS_SCRIPT_SIGNED_URL_UPLOADS === 'true';
+    const [{ data: signed, error: signedError }, { data: fileData, error: fileError }] = await Promise.all([
+      admin.storage.from('practicum-reports').createSignedUrl(filePath, 900),
+      useSignedUrl ? Promise.resolve({ data: null, error: null }) : admin.storage.from('practicum-reports').download(filePath)
+    ]);
     if (signedError || !signed?.signedUrl) throw signedError || new Error('Could not create the Drive transfer URL');
-    const drive = await sendToDrive(signed.signedUrl, enriched, profileResult.data);
+    if (!useSignedUrl && (fileError || !fileData)) throw fileError || new Error('Could not retrieve the uploaded PDF');
+    const drive = await sendToDrive(signed.signedUrl, fileData, enriched, profileResult.data);
     if (drive.pending) return;
     const { data: updated, error: updateError } = await admin.from('submissions').update({
       drive_file_id: drive.fileId,
