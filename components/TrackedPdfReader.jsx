@@ -60,6 +60,8 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
   const lastMeaningfulActivity = useRef(Date.now());
   const latest = useRef({});
   const flushRef = useRef(null);
+  const sessionInitKey = useRef('');
+  const renderTasks = useRef(new Map());
 
   const completion = useMemo(() => pageCount ? clamp((pagesSeen.length / pageCount) * 100, 0, 100) : 0, [pageCount, pagesSeen]);
 
@@ -79,8 +81,20 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
 
   useEffect(() => {
     if (loading || !user || !supabase || profile?.role !== 'student') return;
+    const key = `${user.id}:${track}:${moduleNumber}:${src}`;
+    if (sessionInitKey.current === key) return;
+    sessionInitKey.current = key;
     let cancelled = false;
     (async () => {
+      const recentCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: existing } = await supabase.from('reading_sessions')
+        .select('id').eq('student_id', user.id).eq('track', track)
+        .eq('module_number', Number(moduleNumber)).eq('document_path', src)
+        .gte('updated_at', recentCutoff).order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      if (!cancelled && existing?.id) {
+        setSessionId(existing.id);
+        return;
+      }
       const { data, error: insertError } = await supabase.from('reading_sessions').insert({
         student_id: user.id,
         track,
@@ -121,15 +135,12 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
   }, [loading, user, profile?.role, src]);
 
   useEffect(() => {
-    if (!pdf || status !== 'ready') return;
-    let disposed = false;
-    (async () => {
-      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-        if (disposed) break;
-        const container = pageRefs.current.get(pageNumber);
-        if (!container || container.dataset.rendered === 'true') continue;
+    if (status !== 'ready' || !pageCount || !pdf) return;
+    const renderPage = async (pageNumber, container) => {
+      if (!container || container.dataset.rendered === 'true' || renderTasks.current.has(pageNumber)) return;
+      const task = (async () => {
         const page = await pdf.getPage(pageNumber);
-        if (disposed) break;
+        if (!container.isConnected) return;
         const base = page.getViewport({ scale: 1 });
         const availableWidth = Math.min(920, Math.max(280, container.clientWidth - 24));
         const viewport = page.getViewport({ scale: availableWidth / base.width });
@@ -141,25 +152,24 @@ export default function TrackedPdfReader({ track, moduleNumber, src, title }) {
         container.replaceChildren(canvas);
         await page.render({ canvasContext: context, viewport }).promise;
         container.dataset.rendered = 'true';
-      }
-    })();
-    return () => { disposed = true; };
-  }, [pdf, status]);
-
-  useEffect(() => {
-    if (status !== 'ready' || !pageCount) return;
+      })().finally(() => renderTasks.current.delete(pageNumber));
+      renderTasks.current.set(pageNumber, task);
+    };
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         const page = Number(entry.target.dataset.page);
-        if (entry.isIntersecting) visiblePages.current.set(page, entry.intersectionRatio);
+        if (entry.isIntersecting) {
+          visiblePages.current.set(page, entry.intersectionRatio);
+          renderPage(page, entry.target);
+        }
         else visiblePages.current.delete(page);
       });
       const top = [...visiblePages.current.entries()].sort((a, b) => b[1] - a[1])[0];
       if (top) setCurrentPage(top[0]);
-    }, { threshold: [0.2, 0.5, 0.8] });
+    }, { rootMargin: '800px 0px', threshold: [0, 0.2, 0.5, 0.8] });
     pageRefs.current.forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [status, pageCount]);
+  }, [status, pageCount, pdf]);
 
   useEffect(() => {
     const meaningfulActivity = () => { lastMeaningfulActivity.current = Date.now(); };

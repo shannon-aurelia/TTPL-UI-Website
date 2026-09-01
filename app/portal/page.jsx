@@ -71,7 +71,7 @@ export default function Portal() {
       <div className="card metric-card"><CalendarDays/><span>Planned labs</span><b>{plans.length}</b></div>
       <div className="card metric-card"><Clock/><span>Open submissions</span><b>{active.length}</b></div>
       <div className="card metric-card"><CheckCircle/><span>Submitted</span><b>{completed}</b></div>
-      <div className="card metric-card"><FileText/><span>Grades released</span><b>{submissions.filter((item) => item.submission_reviews?.grade_released).length}</b></div>
+      <div className="card metric-card"><FileText/><span>Grades released</span><b>{submissions.filter((item) => { const review = Array.isArray(item.submission_reviews) ? item.submission_reviews[0] : item.submission_reviews; return review?.grade_released; }).length}</b></div>
     </div>
     <ProfileEditor/>
     <div className="grid two dashboard-grid">

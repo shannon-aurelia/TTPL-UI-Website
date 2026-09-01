@@ -9,11 +9,16 @@ function userClient(authorization) {
   });
 }
 
-async function sendToDrive(file, submission, profile) {
+function serviceClient() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+}
+
+async function sendToDrive(downloadUrl, submission, profile) {
   const url = process.env.GOOGLE_APPS_SCRIPT_WEB_APP_URL;
   const secret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
   if (!url || !secret) return { pending: true };
-  const buffer = Buffer.from(await file.arrayBuffer());
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -36,7 +41,7 @@ async function sendToDrive(file, submission, profile) {
         originalFileName: submission.original_file_name,
         driveFileName: submission.stored_file_name,
         mimeType: 'application/pdf',
-        base64: buffer.toString('base64')
+        downloadUrl
       }
     }),
     cache: 'no-store'
@@ -133,11 +138,12 @@ export async function POST(request) {
   };
   after(async () => {
     try {
-    const { data: fileData, error: fileError } = await supabase.storage.from('practicum-reports').download(filePath);
-    if (fileError) throw fileError;
-    const drive = await sendToDrive(fileData, enriched, profileResult.data);
+    const admin = serviceClient();
+    const { data: signed, error: signedError } = await admin.storage.from('practicum-reports').createSignedUrl(filePath, 900);
+    if (signedError || !signed?.signedUrl) throw signedError || new Error('Could not create the Drive transfer URL');
+    const drive = await sendToDrive(signed.signedUrl, enriched, profileResult.data);
     if (drive.pending) return;
-    const { data: updated, error: updateError } = await supabase.from('submissions').update({
+    const { data: updated, error: updateError } = await admin.from('submissions').update({
       drive_file_id: drive.fileId,
       drive_file_url: drive.fileUrl,
       drive_sync_status: 'synced'
@@ -145,7 +151,7 @@ export async function POST(request) {
     if (updateError) throw updateError;
     if (!updated) throw new Error('Drive sync result could not be saved');
   } catch (error) {
-    await supabase.from('submissions').update({ drive_sync_status: 'failed' }).eq('id', submissionResult.data.id);
+    await serviceClient().from('submissions').update({ drive_sync_status: 'failed' }).eq('id', submissionResult.data.id);
     console.error('[submissions] Drive archive failed', { submissionId: submissionResult.data.id, error: String(error) });
   }
   });

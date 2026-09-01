@@ -61,7 +61,19 @@ export async function DELETE(request) {
   const authClient = createClient(url, anonKey, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
   const { data } = await authClient.auth.getUser(authorization.slice(7));
   if (!data.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const body = await request.json().catch(() => ({}));
+  if (body.confirmation !== 'DELETE MY ACCOUNT') {
+    return NextResponse.json({ error: 'Type DELETE MY ACCOUNT exactly to confirm.' }, { status: 400 });
+  }
+  const lastSignIn = Date.parse(data.user.last_sign_in_at || '');
+  if (!Number.isFinite(lastSignIn) || Date.now() - lastSignIn > 15 * 60 * 1000) {
+    return NextResponse.json({ error: 'For security, sign out and sign in again before deleting your account.' }, { status: 403 });
+  }
   const adminClient = createClient(url, serviceKey, { auth: { persistSession: false } });
+  const { data: ownProfile } = await adminClient.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+  if (ownProfile?.role !== 'student') {
+    return NextResponse.json({ error: 'Staff accounts must be removed by another administrator.' }, { status: 403 });
+  }
   const { error } = await adminClient.auth.admin.deleteUser(data.user.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ deleted: true });

@@ -23,7 +23,10 @@ export default function AssistantDashboard() {
       supabase.from('profiles').select('*').eq('role', 'student').order('full_name')
     ]);
     setSessions(sessionResult.data || []);
-    setSubmissions(submissionResult.data || []);
+    setSubmissions((submissionResult.data || []).map((submission) => ({
+      ...submission,
+      submission_reviews: Array.isArray(submission.submission_reviews) ? submission.submission_reviews[0] : submission.submission_reviews
+    })));
     setStudents(studentResult.data || []);
   };
 

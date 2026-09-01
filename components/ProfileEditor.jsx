@@ -41,11 +41,12 @@ export default function ProfileEditor() {
   };
 
   const deleteAccount = async () => {
-    if (!confirm('Permanently delete your account and all linked practicum data? This cannot be undone.')) return;
+    const confirmation = prompt('This permanently deletes your account and linked practicum data. Type DELETE MY ACCOUNT to continue.');
+    if (confirmation !== 'DELETE MY ACCOUNT') return;
     setDeleting(true);
     let { data } = await supabase.auth.getSession();
     if (!data.session?.access_token) data = (await supabase.auth.refreshSession()).data;
-    const response = await fetch('/api/profile', { method: 'DELETE', headers: { Authorization: `Bearer ${data.session?.access_token || ''}` } });
+    const response = await fetch('/api/profile', { method: 'DELETE', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` }, body: JSON.stringify({ confirmation }) });
     const result = await response.json();
     if (!response.ok) { setMessage(result.error || 'Account deletion failed.'); setDeleting(false); return; }
     await supabase.auth.signOut();

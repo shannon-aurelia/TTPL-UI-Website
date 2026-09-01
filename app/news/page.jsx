@@ -1,10 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, X, Send } from 'lucide-react';
+import { useAuth } from '../../components/AuthProvider';
 
 export default function News() {
+  const { user, profile, supabase } = useAuth();
   const [articles, setArticles] = useState([]);
-  const [user, setUser] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -17,16 +18,13 @@ export default function News() {
   useEffect(() => {
     // 1. Fetch news
     fetchNews();
-    // 2. Fetch session (if logged in, we enable posting options)
-    fetch('/api/auth/me')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setUser(data.data);
-        }
-      })
-      .catch(() => {});
   }, []);
+
+  const authHeaders = async () => {
+    let { data } = await supabase.auth.getSession();
+    if (!data.session?.access_token) data = (await supabase.auth.refreshSession()).data;
+    return { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` };
+  };
 
   const fetchNews = async () => {
     try {
@@ -49,7 +47,7 @@ export default function News() {
     try {
       const res = await fetch('/api/news', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({ title, content, tag }),
       });
       const data = await res.json();
@@ -70,7 +68,7 @@ export default function News() {
   const handleDeleteNews = async (id) => {
     if (!confirm('Are you sure you want to delete this news article?')) return;
     try {
-      const res = await fetch(`/api/news/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/news/${id}`, { method: 'DELETE', headers: await authHeaders() });
       const data = await res.json();
       if (data.success) {
         fetchNews();
@@ -80,7 +78,7 @@ export default function News() {
     }
   };
 
-  const isAssistant = user?.role === 'assistant' || user?.role === 'admin';
+  const isAssistant = Boolean(user && ['assistant', 'admin'].includes(profile?.role));
 
   return (
     <section className="section page-hero" id="top">
