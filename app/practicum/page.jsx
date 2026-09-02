@@ -1,5 +1,99 @@
-import Link from 'next/link';
-export default function Practicum(){return <section className="section page-hero" id="top"><h1 className="title" data-i18n="practicum.title">Practicum.</h1><p className="subtitle" data-i18n="practicum.lead">Choose a TTPL track. Each page contains modules, videos, rules, deadlines, pre/post tests, and submission checkpoints.</p><div className="grid" style={{marginTop:34}}><Card href="/practicum/rl" title="Rangkaian Listrik" desc="Mesh, node, superposition, Thevenin, Norton, two-port, AC, and three-phase."/><Card href="/practicum/idp" title="Instrumentation & Measurement" desc="Analog meter, digital meter, power, quality, lux, grounding, and energy measurement."/><Card href="/practicum/t3" title="High Voltage & High Current" desc="AC/DC high voltage, impulse, air/liquid/solid insulation, and safety."/></div><div style={{marginTop:18}}><Link className="btn ghost" href="/reading-analytics">Staff reading analytics</Link></div><Timeline/></section>}
-function Card({href,title,desc}){return <Link href={href} className="track-card"><div className="eyebrow">TTPL Track</div><h3>{title}</h3><p>{desc}</p><span className="chip">Modules</span><span className="chip">Videos</span><span className="chip">Submissions</span></Link>}
-const semesterPhases=[['September','RL briefing and launch','Briefing and pre-test for Electrical Engineering KKI and Regular, followed by the first RL practicum weeks.'],['October','RL completion and IDP preparation','RL continues, followed by UTS, the RL post-test, IDP briefing, IDP pre-test, and IDP schedule allocation.'],['November','IDP practicum','IDP practicum weeks for Electrical Engineering KKI and Regular.'],['December','Final checkpoints','UAS period and the IDP post-test close the semester.']];
-function Timeline(){return <div className="timeline-wrap real-semester-timeline"><div className="timeline-heading"><div><div className="eyebrow">2026/2027 operating calendar</div><h2>TTPL semester timeline.</h2></div><p>Planned dates give students context. Actual attendance controls report access and the next-day 23:59 WIB deadline.</p></div><div className="timeline-phase-grid">{semesterPhases.map(([month,title,detail],index)=><article key={month}><span>{String(index+1).padStart(2,'0')}</span><div><b>{month}</b><h3>{title}</h3><p>{detail}</p></div></article>)}</div></div>}
+import Link from "next/link";
+export default function Practicum() {
+  return (
+    <section className="section page-hero" id="top">
+      <h1 className="title" data-i18n="practicum.title">
+        Practicum.
+      </h1>
+      <p className="subtitle" data-i18n="practicum.lead">
+        Choose a TTPL track. Each page contains modules, videos, rules,
+        schedules, and pre/post-test information.
+      </p>
+      <div className="grid" style={{ marginTop: 34 }}>
+        <Card
+          href="/practicum/rl"
+          title="Rangkaian Listrik"
+          desc="Mesh, node, superposition, Thevenin, Norton, two-port, AC, and three-phase."
+        />
+        <Card
+          href="/practicum/idp"
+          title="Instrumentation & Measurement"
+          desc="Analog meter, digital meter, power, quality, lux, grounding, and energy measurement."
+        />
+        <Card
+          href="/practicum/t3"
+          title="High Voltage & High Current"
+          desc="AC/DC high voltage, impulse, air/liquid/solid insulation, and safety."
+        />
+      </div>
+      <div style={{ marginTop: 18 }}>
+        <Link className="btn ghost" href="/reading-analytics">
+          Staff reading analytics
+        </Link>
+      </div>
+      <Timeline />
+    </section>
+  );
+}
+function Card({ href, title, desc }) {
+  return (
+    <Link href={href} className="track-card">
+      <div className="eyebrow">TTPL Track</div>
+      <h3>{title}</h3>
+      <p>{desc}</p>
+      <span className="chip">Modules</span>
+      <span className="chip">Videos</span>
+      <span className="chip">Attendance &amp; QnA</span>
+    </Link>
+  );
+}
+const semesterPhases = [
+  [
+    "September",
+    "RL briefing and launch",
+    "Briefing and pre-test for Electrical Engineering KKI and Regular, followed by the first RL practicum weeks.",
+  ],
+  [
+    "October",
+    "RL completion and IDP preparation",
+    "RL continues, followed by UTS, the RL post-test, IDP briefing, IDP pre-test, and IDP schedule allocation.",
+  ],
+  [
+    "November",
+    "IDP practicum",
+    "IDP practicum weeks for Electrical Engineering KKI and Regular.",
+  ],
+  [
+    "December",
+    "Final checkpoints",
+    "UAS period and the IDP post-test close the semester.",
+  ],
+];
+function Timeline() {
+  return (
+    <div className="timeline-wrap real-semester-timeline">
+      <div className="timeline-heading">
+        <div>
+          <div className="eyebrow">2026/2027 operating calendar</div>
+          <h2>TTPL semester timeline.</h2>
+        </div>
+        <p>
+          Planned dates give students context. Assistants record actual
+          attendance and QnA results after each lab.
+        </p>
+      </div>
+      <div className="timeline-phase-grid">
+        {semesterPhases.map(([month, title, detail], index) => (
+          <article key={month}>
+            <span>{String(index + 1).padStart(2, "0")}</span>
+            <div>
+              <b>{month}</b>
+              <h3>{title}</h3>
+              <p>{detail}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
