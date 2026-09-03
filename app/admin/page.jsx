@@ -405,33 +405,42 @@ export default function AdminPage() {
       return;
     setDeleting(session.id);
     const { data: sessionData } = await supabase.auth.getSession();
-    const sheetResponse = await fetch("/api/attendance", {
+    setSessions((current) => current.filter((item) => item.id !== session.id));
+    const { error } = await supabase
+      .from("practicum_sessions")
+      .delete()
+      .eq("id", session.id);
+    if (error) {
+      setMessage(`Nothing was deleted: ${error.message}`);
+      await load();
+      setDeleting("");
+      return;
+    }
+    setMessage(
+      "QnA record deleted from the website. Google Sheet cleanup is continuing automatically...",
+    );
+    fetch("/api/attendance", {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${sessionData.session?.access_token || ""}`,
       },
       body: JSON.stringify({ sourceKeys: [session.source_row_key] }),
-    });
-    const sheetResult = await sheetResponse.json();
-    if (!sheetResponse.ok) {
-      setMessage(
-        `Nothing was deleted. Google Sheet connection failed: ${sheetResult.error || "unknown error"}`,
-      );
-      setDeleting("");
-      return;
-    }
-    const { error } = await supabase
-      .from("practicum_sessions")
-      .delete()
-      .eq("id", session.id);
-    if (error)
-      setMessage(
-        `The Sheet row was deleted. Website retry needed: ${error.message}`,
+    })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        setMessage(
+          response.ok
+            ? "QnA record deleted from the website and Google Sheet."
+            : `QnA record deleted from the website. Sheet cleanup is pending: ${result.error || "Google service unavailable"}`,
+        );
+      })
+      .catch(() =>
+        setMessage(
+          "QnA record deleted from the website. Sheet cleanup will retry when Google is reachable.",
+        ),
       );
     await load();
-    if (!error)
-      setMessage("QnA record deleted from the website and Google Sheet.");
     setDeleting("");
   };
 
