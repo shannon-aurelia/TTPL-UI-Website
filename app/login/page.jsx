@@ -112,7 +112,7 @@ export default function Login() {
     <div className="card auth-card">
       <div className="eyebrow">TTPL portal</div>
       <h1 className="title">{registering ? 'Create a student account.' : 'Welcome back.'}</h1>
-      <p className="subtitle">Students can view their attendance-based deadlines and submit reports. Staff accounts open the practicum administration portal.</p>
+      <p className="subtitle">Students can manage their profile and view schedules, attendance, and QnA records. Report files are submitted through EMAS3.</p>
       {!configured && <div className="status-message warning">The account service is currently unavailable.</div>}
       {error && <div className="status-message error">{error}</div>}
       {notice && <div className="status-message">{notice}</div>}
