@@ -23,7 +23,6 @@ export default function StudentsPage() {
   const [students, setStudents] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [plans, setPlans] = useState([]);
-  const [submissions, setSubmissions] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [openStudent, setOpenStudent] = useState('');
   const [query, setQuery] = useState('');
@@ -34,20 +33,18 @@ export default function StudentsPage() {
 
   const load = useCallback(async () => {
     if (!supabase || !isStaff) return;
-    const [profileResult, rosterResult, sessionResult, planResult, submissionResult] = await Promise.all([
+    const [profileResult, rosterResult, sessionResult, planResult] = await Promise.all([
       supabase.from('profiles').select('*').eq('role', 'student').order('full_name'),
       supabase.from('student_roster').select('*').order('full_name'),
       supabase.from('practicum_sessions').select('*').order('attended_at', { ascending: false }),
-      supabase.from('student_module_plans').select('*').order('planned_lab_date'),
-      supabase.from('submissions').select('*').order('submitted_at', { ascending: false })
+      supabase.from('student_module_plans').select('*').order('planned_lab_date')
     ]);
-    const error = profileResult.error || rosterResult.error || sessionResult.error || planResult.error || submissionResult.error;
+    const error = profileResult.error || rosterResult.error || sessionResult.error || planResult.error;
     if (error) setMessage(error.message);
     const claimedIds = new Set((profileResult.data || []).map((student) => student.id));
     setStudents([...(profileResult.data || []), ...(rosterResult.data || []).filter((student) => !student.claimed_by || !claimedIds.has(student.claimed_by)).map((student) => ({ ...student, id: `roster-${student.id}`, roster_id: student.id, email: student.ui_email || 'Registration pending', gmail_email: student.gmail_email, is_roster: true, study_program: 'Electrical Engineering' }))]);
     setSessions(sessionResult.data || []);
     setPlans(planResult.data || []);
-    setSubmissions(submissionResult.data || []);
   }, [supabase, isStaff]);
 
   useEffect(() => {
@@ -64,7 +61,6 @@ export default function StudentsPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_roster' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'practicum_sessions' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'student_module_plans' }, load)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, load)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [supabase, isStaff, load]);
@@ -122,7 +118,7 @@ export default function StudentsPage() {
 
   return <section className="section student-directory-page">
     <div className="workspace-page-heading">
-      <div><Link className="back-link" href="/admin"><ArrowLeft size={16}/> Admin desk</Link><div className="eyebrow">Student directory</div><h1 className="title">Every student, one record.</h1><p className="subtitle">Click a student to review attendance, planned dates, submissions, and edit the profile shared by the website and source Sheet.</p></div>
+      <div><Link className="back-link" href="/admin"><ArrowLeft size={16}/> Admin desk</Link><div className="eyebrow">Student directory</div><h1 className="title">Every student, one record.</h1><p className="subtitle">Click a student to review attendance, planned dates, and edit the profile shared by the website and source Sheet.</p></div>
       <Link className="btn" href="/admin/schedule"><CalendarDays size={17}/> Open schedule</Link>
     </div>
     {message && <div className="status-message">{message}</div>}
@@ -133,7 +129,6 @@ export default function StudentsPage() {
         const expanded = openStudent === student.id;
         const attendance = sessions.filter((item) => item.student_id === student.id);
         const studentPlans = plans.filter((item) => student.is_roster ? item.roster_id === student.roster_id : item.student_id === student.id);
-        const studentSubmissions = submissions.filter((item) => item.student_id === student.id);
         return <article className={`card student-directory-card ${expanded ? 'expanded' : ''}`} key={student.id}>
           <button className="student-card-summary" type="button" onClick={() => setOpenStudent(expanded ? '' : student.id)} aria-expanded={expanded}>
             <span className="student-avatar"><UserRound/></span><span><b>{student.full_name}</b><small>{student.npm || 'No NPM'} · {student.email}</small></span><span className={student.is_active === false ? 'student-state blocked' : 'student-state'}>{student.is_active === false ? 'Blocked' : student.is_roster ? 'Registration pending' : 'Active'}</span><span className="student-record-count">{attendance.length} attendance</span>{expanded ? <ChevronUp/> : <ChevronDown/>}
@@ -152,7 +147,6 @@ export default function StudentsPage() {
             <div className="student-record-columns">
               <section><h3>Attendance and QnA</h3>{attendance.length ? attendance.map((item) => <div className="student-record-row" key={item.id}><span><b>{item.track.toUpperCase()} · Module {moduleName(item)}</b><small>{formatDate(item.attended_at || item.scheduled_at)}{item.is_makeup ? ' · Makeup' : ''}</small></span><strong>{item.qna_score ?? '—'}</strong></div>) : <p className="muted">No attendance recorded yet.</p>}</section>
               <section><h3>Planned schedule</h3>{studentPlans.length ? studentPlans.map((item) => <div className="student-record-row" key={item.id}><span><b>{item.track.toUpperCase()} · Module {moduleName(item)}</b><small>{item.planned_lab_date || item.planned_week_start}</small></span><strong>{item.status}</strong></div>) : <p className="muted">No planned lab dates yet.</p>}</section>
-              <section><h3>Submissions</h3>{studentSubmissions.length ? studentSubmissions.map((item) => <div className="student-record-row" key={item.id}><span><b>{item.track.toUpperCase()} · {item.report_group}</b><small>{formatDate(item.submitted_at)}</small></span><strong>{item.minutes_late > 0 ? 'Late' : 'On time'}</strong></div>) : <p className="muted">No reports submitted yet.</p>}</section>
             </div>
           </div>}
         </article>;

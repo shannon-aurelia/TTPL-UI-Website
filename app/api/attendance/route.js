@@ -28,27 +28,25 @@ async function writeAttendance(request) {
   const body = await request.json();
   const entries = body.entries || (body.entry ? [body.entry] : []);
   if (!entries.length) return NextResponse.json({ error: 'No attendance rows supplied' }, { status: 400 });
-  let response;
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'appendAttendance', secret, data: entries }),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(15000)
-    });
-  } catch {
-    return NextResponse.json({ error: 'Google Sheet bridge could not be reached' }, { status: 502 });
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'appendAttendance', secret, data: entries }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(25000)
+      });
+      const result = JSON.parse(await response.text());
+      if (!response.ok || result.error) throw new Error(result.error || 'Sheet update failed');
+      return NextResponse.json(result.data);
+    } catch (error) {
+      lastError = error;
+      console.error('[attendance] Sheet write attempt failed', { attempt, error: String(error) });
+    }
   }
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    return NextResponse.json({ error: 'Google Sheet bridge returned an invalid response' }, { status: 502 });
-  }
-  const result = await response.json();
-  if (!response.ok || result.error) {
-    return NextResponse.json({ error: result.error || 'Sheet update failed' }, { status: 502 });
-  }
-  return NextResponse.json(result.data);
+  return NextResponse.json({ error: lastError?.message || 'Google Sheet bridge could not be reached' }, { status: 502 });
 }
 
 export async function POST(request) {
@@ -67,23 +65,23 @@ export async function DELETE(request) {
   const secret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
   if (!url || !secret) return NextResponse.json({ error: 'Google Sheet bridge is not configured' }, { status: 503 });
   const body = await request.json();
-  let response;
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'deleteAttendance', secret, data: body.sourceKeys || [] }),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(15000)
-    });
-  } catch {
-    return NextResponse.json({ error: 'Google Sheet bridge could not be reached' }, { status: 502 });
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deleteAttendance', secret, data: body.sourceKeys || [] }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(25000)
+      });
+      const result = JSON.parse(await response.text());
+      if (!response.ok || result.error) throw new Error(result.error || 'Sheet delete failed');
+      return NextResponse.json(result.data);
+    } catch (error) {
+      lastError = error;
+      console.error('[attendance] Sheet delete attempt failed', { attempt, error: String(error) });
+    }
   }
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    return NextResponse.json({ error: 'Google Sheet bridge returned an invalid response' }, { status: 502 });
-  }
-  const result = await response.json();
-  if (!response.ok || result.error) return NextResponse.json({ error: result.error || 'Sheet delete failed' }, { status: 502 });
-  return NextResponse.json(result.data);
+  return NextResponse.json({ error: lastError?.message || 'Google Sheet bridge could not be reached' }, { status: 502 });
 }

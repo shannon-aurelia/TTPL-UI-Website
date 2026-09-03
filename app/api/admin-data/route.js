@@ -17,16 +17,25 @@ async function sheet(action, data) {
   const url = process.env.GOOGLE_APPS_SCRIPT_WEB_APP_URL;
   const secret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
   if (!url || !secret) throw new Error('Google Sheet bridge is not configured');
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, secret, data }),
-    cache: 'no-store',
-    signal: AbortSignal.timeout(15000)
-  });
-  const result = await response.json();
-  if (!response.ok || result.error) throw new Error(result.error || 'Google Sheet update failed');
-  return result.data;
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, secret, data }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(25000)
+      });
+      const result = JSON.parse(await response.text());
+      if (!response.ok || result.error) throw new Error(result.error || 'Google Sheet update failed');
+      return result.data;
+    } catch (error) {
+      lastError = error;
+      console.error('[admin-data] Sheet attempt failed', { action, attempt, error: String(error) });
+    }
+  }
+  throw lastError || new Error('Google Sheet update failed');
 }
 
 function studentRow(profile) {
@@ -107,10 +116,13 @@ export async function POST(request) {
       if (actor.profile.role !== 'admin') return NextResponse.json({ error: 'Administrator access required' }, { status: 403 });
       const { data: current } = await supabase.from('profiles').select('*').eq('id', body.id).single();
       if (!current || current.role !== 'student') throw new Error('Student account not found');
-      await sheet('deleteStudent', studentRow(current));
-      const { error } = await supabase.rpc('admin_delete_student_account', { target_id: body.id });
+      const { error } = await supabase.auth.admin.deleteUser(body.id);
       if (error) throw error;
-      return NextResponse.json({ deleted: true });
+      after(async () => {
+        try { await sheet('deleteStudent', studentRow(current)); }
+        catch (error) { console.error('[admin-data] Deleted student Sheet cleanup pending', { id: body.id, error: String(error) }); }
+      });
+      return NextResponse.json({ deleted: true, sheetSync: 'pending' });
     }
     if (body.action === 'upsertPlan') {
       const identityQuery = body.plan.student_id

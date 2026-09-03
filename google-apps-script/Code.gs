@@ -33,37 +33,48 @@ function upsertRow(sheet, headerRow, matchHeaders, data) {
   const headers = sheet.getRange(headerRow, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
   const normalized = {};
   headers.forEach(function (header, index) { normalized[String(header).trim()] = index; });
+  const dataRowCount = Math.max(0, sheet.getMaxRows() - headerRow);
+  const displayedRows = dataRowCount ? sheet.getRange(headerRow + 1, 1, dataRowCount, headers.length).getDisplayValues() : [];
   let targetRow = 0;
-  for (let row = headerRow + 1; row <= sheet.getLastRow(); row += 1) {
-    const values = sheet.getRange(row, 1, 1, headers.length).getDisplayValues()[0];
+  let firstEmptyRow = 0;
+  displayedRows.forEach(function (values, offset) {
+    if (!firstEmptyRow && values.every(function (value) { return String(value || '').trim() === ''; })) firstEmptyRow = headerRow + 1 + offset;
     const matches = matchHeaders.some(function (header) {
       const value = data[header];
       const index = normalized[header];
       return value != null && String(value).trim() !== '' && index != null && String(values[index]).trim().toLowerCase() === String(value).trim().toLowerCase();
     });
-    if (matches) { targetRow = row; break; }
+    if (!targetRow && matches) targetRow = headerRow + 1 + offset;
+  });
+  targetRow = targetRow || firstEmptyRow;
+  if (!targetRow) {
+    sheet.insertRowAfter(sheet.getMaxRows());
+    targetRow = sheet.getMaxRows();
   }
   const existing = targetRow ? sheet.getRange(targetRow, 1, 1, headers.length).getValues()[0] : Array(headers.length).fill('');
   headers.forEach(function (header, index) {
     const key = String(header).trim();
     if (Object.prototype.hasOwnProperty.call(data, key)) existing[index] = data[key];
   });
-  if (targetRow) sheet.getRange(targetRow, 1, 1, headers.length).setValues([existing]);
-  else sheet.getRange(sheet.getLastRow() + 1, 1, 1, headers.length).setValues([existing]);
+  sheet.getRange(targetRow, 1, 1, headers.length).setValues([existing]);
   return { saved: 1 };
 }
 
 function deleteMatchingRow(sheet, headerRow, matchHeaders, data) {
   const headers = sheet.getRange(headerRow, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  const dataRowCount = Math.max(0, sheet.getMaxRows() - headerRow);
+  const rows = dataRowCount ? sheet.getRange(headerRow + 1, 1, dataRowCount, headers.length).getDisplayValues() : [];
   let deleted = 0;
-  for (let row = sheet.getLastRow(); row > headerRow; row -= 1) {
-    const values = sheet.getRange(row, 1, 1, headers.length).getDisplayValues()[0];
+  rows.forEach(function (values, offset) {
     const matches = matchHeaders.some(function (header) {
       const index = headers.indexOf(header);
       return index >= 0 && data[header] && String(values[index]).trim().toLowerCase() === String(data[header]).trim().toLowerCase();
     });
-    if (matches) { sheet.deleteRow(row); deleted += 1; }
-  }
+    if (matches) {
+      sheet.getRange(headerRow + 1 + offset, 1, 1, headers.length).clearContent();
+      deleted += 1;
+    }
+  });
   return { deleted: deleted };
 }
 
@@ -131,22 +142,26 @@ function attendanceValues(entry, existing) {
 function appendAttendance(spreadsheet, data) {
   const sheet = spreadsheet.getSheetByName('QnA Attendance');
   const rows = Array.isArray(data) ? data : [data];
-  const lastRow = sheet.getLastRow();
-  const sourceKeys = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues() : [];
+  const sourceKeys = sheet.getMaxRows() > 1 ? sheet.getRange(2, 1, sheet.getMaxRows() - 1, 1).getDisplayValues() : [];
   const rowByKey = {};
-  sourceKeys.forEach(function (value, index) { rowByKey[String(value[0])] = index + 2; });
-  const newRows = [];
+  const emptyRows = [];
+  sourceKeys.forEach(function (value, index) {
+    const key = String(value[0] || '').trim();
+    if (key) rowByKey[key] = index + 2;
+    else emptyRows.push(index + 2);
+  });
   rows.forEach(function (entry) {
-    const targetRow = rowByKey[String(entry.sourceKey)];
+    let targetRow = rowByKey[String(entry.sourceKey)];
+    if (!targetRow) targetRow = emptyRows.shift();
+    if (!targetRow) {
+      sheet.insertRowAfter(sheet.getMaxRows());
+      targetRow = sheet.getMaxRows();
+    }
     const existing = targetRow ? sheet.getRange(targetRow, 1, 1, 17).getDisplayValues()[0] : [];
     const values = attendanceValues(entry, existing);
-    if (targetRow) {
-      sheet.getRange(targetRow, 1, 1, values.length).setValues([values]);
-    } else {
-      newRows.push(values);
-    }
+    sheet.getRange(targetRow, 1, 1, values.length).setValues([values]);
+    rowByKey[String(entry.sourceKey)] = targetRow;
   });
-  if (newRows.length) sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
   return { saved: rows.length };
 }
 
@@ -154,13 +169,15 @@ function deleteAttendance(spreadsheet, sourceKeys) {
   const sheet = spreadsheet.getSheetByName('QnA Attendance');
   const wanted = {};
   (Array.isArray(sourceKeys) ? sourceKeys : [sourceKeys]).forEach(function (key) { wanted[String(key)] = true; });
+  const rowCount = Math.max(0, sheet.getMaxRows() - 1);
+  const keys = rowCount ? sheet.getRange(2, 1, rowCount, 1).getDisplayValues() : [];
   let deleted = 0;
-  for (let row = sheet.getLastRow(); row >= 2; row -= 1) {
-    if (wanted[String(sheet.getRange(row, 1).getDisplayValue())]) {
-      sheet.deleteRow(row);
+  keys.forEach(function (value, index) {
+    if (wanted[String(value[0])]) {
+      sheet.getRange(index + 2, 1, 1, 17).clearContent();
       deleted += 1;
     }
-  }
+  });
   return { deleted: deleted };
 }
 
